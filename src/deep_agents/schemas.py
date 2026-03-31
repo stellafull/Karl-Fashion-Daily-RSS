@@ -65,7 +65,7 @@ class DataWizOutput(BaseModel):
 class SectionDraft(BaseModel):
     section_id: str
     content: str
-    citations: list[str] = Field(default_factory=list)
+    citations: list[dict] = Field(default_factory=list)
     charts_used: list[str] = Field(default_factory=list)
     weak_claims: list[str] = Field(default_factory=list)
 
@@ -73,8 +73,8 @@ class SectionDraft(BaseModel):
 class ReviewResult(BaseModel):
     quality_score: int
     verdict: str
-    issues: list[str] = Field(default_factory=list)
-    claim_checks: list[str] = Field(default_factory=list)
+    issues: list[dict] = Field(default_factory=list)
+    claim_checks: list[dict] = Field(default_factory=list)
     missing_aspects: list[str] = Field(default_factory=list)
 
 
@@ -86,9 +86,9 @@ class ReviserOutput(BaseModel):
 
 
 class FinalResult(BaseModel):
-    resolved_issues: list[str] = Field(default_factory=list)
-    unresolved_issues: list[str] = Field(default_factory=list)
-    new_issues: list[str] = Field(default_factory=list)
+    resolved_issues: list[dict] = Field(default_factory=list)
+    unresolved_issues: list[dict] = Field(default_factory=list)
+    new_issues: list[dict] = Field(default_factory=list)
     final_score: int
     final_verdict: str
     publication_readiness: str

@@ -5,7 +5,7 @@ from langgraph.graph import add_messages
 from typing_extensions import TypedDict
 
 
-class ResearchState(TypedDict, total=False):
+class ResearchState(TypedDict):
     messages: Annotated[list, add_messages]
     object_context: str | None
 
@@ -40,7 +40,7 @@ class ResearchState(TypedDict, total=False):
     final_result: dict | None
 
 
-class SectionState(TypedDict, total=False):
+class SectionState(TypedDict):
     section_id: str
     section_title: str
     section_description: str

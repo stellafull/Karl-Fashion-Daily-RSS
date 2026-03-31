@@ -106,17 +106,22 @@ def test_data_wiz_output_defaults() -> None:
 
 
 def test_section_draft_defaults() -> None:
-    model = SectionDraft(section_id="s1", content="body")
-    assert model.citations == []
+    model = SectionDraft(section_id="s1", content="body", citations=[{"url": "x"}])
+    assert model.citations == [{"url": "x"}]
     assert model.charts_used == []
     assert model.weak_claims == []
 
 
 def test_review_result_defaults() -> None:
-    model = ReviewResult(quality_score=9, verdict="revise")
+    model = ReviewResult(
+        quality_score=9,
+        verdict="revise",
+        issues=[{"issue": "weak evidence"}],
+        claim_checks=[{"claim": "c1", "ok": False}],
+    )
     assert isinstance(model.quality_score, int)
-    assert model.issues == []
-    assert model.claim_checks == []
+    assert model.issues == [{"issue": "weak evidence"}]
+    assert model.claim_checks == [{"claim": "c1", "ok": False}]
     assert model.missing_aspects == []
 
 
@@ -129,13 +134,16 @@ def test_reviser_output_defaults() -> None:
 
 def test_final_result_schema() -> None:
     model = FinalResult(
+        resolved_issues=[{"issue": "i1"}],
+        unresolved_issues=[{"issue": "i2"}],
+        new_issues=[{"issue": "i3"}],
         final_score=95,
         final_verdict="approved",
         publication_readiness="ready",
         final_comments="looks good",
     )
     assert isinstance(model.final_score, int)
-    assert model.resolved_issues == []
-    assert model.unresolved_issues == []
-    assert model.new_issues == []
+    assert model.resolved_issues == [{"issue": "i1"}]
+    assert model.unresolved_issues == [{"issue": "i2"}]
+    assert model.new_issues == [{"issue": "i3"}]
     assert model.final_verdict == "approved"

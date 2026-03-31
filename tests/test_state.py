@@ -15,6 +15,8 @@ def _assert_annotated_reducer(field_annotation: object, expected_reducer: object
 def test_state_types_are_importable() -> None:
     assert ResearchState.__name__ == "ResearchState"
     assert SectionState.__name__ == "SectionState"
+    assert ResearchState.__total__ is True
+    assert SectionState.__total__ is True
 
 
 def test_research_state_messages_uses_add_messages_reducer() -> None:
