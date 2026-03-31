@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 
 class Summary(BaseModel):
@@ -73,7 +73,7 @@ class SectionDraft(BaseModel):
 
 
 class ReviewResult(BaseModel):
-    quality_score: int = Field(ge=1, le=10)
+    quality_score: StrictInt = Field(ge=1, le=10)
     verdict: Literal["pass", "fail"]
     issues: list[dict] = Field(default_factory=list)
     claim_checks: list[dict] = Field(default_factory=list)
@@ -91,7 +91,7 @@ class FinalResult(BaseModel):
     resolved_issues: list[dict] = Field(default_factory=list)
     unresolved_issues: list[dict] = Field(default_factory=list)
     new_issues: list[dict] = Field(default_factory=list)
-    final_score: int = Field(ge=1, le=10)
+    final_score: StrictInt = Field(ge=1, le=10)
     final_verdict: Literal["approved", "rejected"]
     publication_readiness: Literal["ready", "needs_review"]
     final_comments: str

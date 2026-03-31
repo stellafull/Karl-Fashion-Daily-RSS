@@ -218,3 +218,15 @@ def test_score_range_validation_raises_for_out_of_range_values() -> None:
             publication_readiness="ready",
             final_comments="x",
         )
+
+
+def test_score_fields_reject_boolean_values() -> None:
+    with pytest.raises(ValidationError):
+        ReviewResult(quality_score=True, verdict="pass")
+    with pytest.raises(ValidationError):
+        FinalResult(
+            final_score=False,
+            final_verdict="approved",
+            publication_readiness="ready",
+            final_comments="x",
+        )
