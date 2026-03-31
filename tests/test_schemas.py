@@ -1,0 +1,140 @@
+from deep_agents.schemas import (
+    AnalystOutput,
+    ArchitectPlan,
+    DataWizOutput,
+    FinalResult,
+    Hypothesis,
+    ResearchBrief,
+    ResearchComplete,
+    ReviewResult,
+    ReviserOutput,
+    RevisedOutline,
+    Section,
+    SectionDraft,
+    Summary,
+)
+
+
+def test_summary_schema() -> None:
+    model = Summary(summary="short", key_excerpts="quote")
+    assert model.summary == "short"
+    assert model.key_excerpts == "quote"
+
+
+def test_research_complete_schema() -> None:
+    model = ResearchComplete(reason="enough evidence")
+    assert model.reason == "enough evidence"
+
+
+def test_research_brief_defaults() -> None:
+    model = ResearchBrief(
+        need_clarification=False,
+        clarification_question="",
+        research_goal="Daily trend report",
+        confirmed_constraints=["fashion", "recent"],
+        open_dimensions=["region"],
+    )
+    assert model.language == "zh"
+    assert model.research_goal == "Daily trend report"
+
+
+def test_hypothesis_defaults() -> None:
+    model = Hypothesis(id="h1", statement="X is rising", evidence_needed=["sales data"])
+    assert model.status == "untested"
+    assert model.id == "h1"
+
+
+def test_section_schema() -> None:
+    model = Section(
+        id="sec-1",
+        title="Market Snapshot",
+        description="Topline market movement",
+        search_queries=["fashion market 2026", "luxury sales report"],
+        priority=1,
+    )
+    assert model.title == "Market Snapshot"
+    assert model.search_queries[0] == "fashion market 2026"
+
+
+def test_architect_plan_defaults() -> None:
+    model = ArchitectPlan(
+        research_type="trend_analysis",
+        hypotheses=[Hypothesis(id="h1", statement="A", evidence_needed=["B"])],
+        sections=[
+            Section(
+                id="s1",
+                title="T1",
+                description="D1",
+                search_queries=["q1"],
+                priority=1,
+            )
+        ],
+        budget={"max_sections": 6},
+    )
+    assert model.outline_status == "provisional"
+    assert len(model.hypotheses) == 1
+
+
+def test_revised_outline_defaults() -> None:
+    model = RevisedOutline(
+        sections=[
+            Section(
+                id="s1",
+                title="T1",
+                description="D1",
+                search_queries=["q1"],
+                priority=1,
+            )
+        ]
+    )
+    assert model.outline_status == "revised"
+    assert len(model.sections) == 1
+
+
+def test_analyst_output_defaults() -> None:
+    model = AnalystOutput()
+    assert model.facts == []
+    assert model.insights == []
+    assert model.contradictions == []
+    assert model.open_questions == []
+
+
+def test_data_wiz_output_defaults() -> None:
+    model = DataWizOutput()
+    assert model.data_points == []
+    assert model.charts == []
+    assert model.hypothesis_evidence == []
+
+
+def test_section_draft_defaults() -> None:
+    model = SectionDraft(section_id="s1", content="body")
+    assert model.citations == []
+    assert model.charts_used == []
+    assert model.weak_claims == []
+
+
+def test_review_result_defaults() -> None:
+    model = ReviewResult(quality_score=0.9, verdict="revise")
+    assert model.issues == []
+    assert model.claim_checks == []
+    assert model.missing_aspects == []
+
+
+def test_reviser_output_defaults() -> None:
+    model = ReviserOutput(full_report="new draft")
+    assert model.changes_made == []
+    assert model.addressed_issues == []
+    assert model.unable_to_address == []
+
+
+def test_final_result_schema() -> None:
+    model = FinalResult(
+        final_score=0.95,
+        final_verdict="approved",
+        publication_readiness="ready",
+        final_comments="looks good",
+    )
+    assert model.resolved_issues == []
+    assert model.unresolved_issues == []
+    assert model.new_issues == []
+    assert model.final_verdict == "approved"
