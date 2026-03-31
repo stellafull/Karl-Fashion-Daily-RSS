@@ -1,9 +1,10 @@
 import operator
+from importlib import import_module
 from typing import Annotated, get_args, get_origin, get_type_hints
 
 from langgraph.graph import add_messages
 
-from deep_agents.state import ResearchState, SectionState
+from deep_agents.state import ResearchPhase, ResearchState, SectionState
 
 
 def _assert_annotated_reducer(field_annotation: object, expected_reducer: object) -> None:
@@ -17,6 +18,18 @@ def test_state_types_are_importable() -> None:
     assert SectionState.__name__ == "SectionState"
     assert ResearchState.__total__ is True
     assert SectionState.__total__ is True
+
+
+def test_research_phase_compatibility_values() -> None:
+    assert ResearchPhase.INIT.value == "init"
+    assert ResearchPhase.PLANNING.value == "planning"
+    assert ResearchPhase.RESEARCHING.value == "researching"
+    assert ResearchPhase.ANALYZING.value == "analyzing"
+    assert ResearchPhase.WRITING.value == "writing"
+    assert ResearchPhase.REVIEWING.value == "reviewing"
+    assert ResearchPhase.REVISING.value == "revising"
+    assert ResearchPhase.RE_RESEARCHING.value == "re_researching"
+    assert ResearchPhase.COMPLETED.value == "completed"
 
 
 def test_research_state_messages_uses_add_messages_reducer() -> None:
@@ -80,3 +93,10 @@ def test_section_state_matches_prd_shape() -> None:
 
     assert required_keys.issubset(set(hints.keys()))
     assert removed_keys.isdisjoint(set(hints.keys()))
+
+
+def test_legacy_agent_imports_smoke() -> None:
+    base_module = import_module("deep_agents.agents.base")
+    architect_module = import_module("deep_agents.agents.architect")
+    assert hasattr(base_module, "BaseAgent")
+    assert hasattr(architect_module, "ChiefArchitect")

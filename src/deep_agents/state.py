@@ -1,8 +1,31 @@
 import operator
+from enum import Enum
 from typing import Annotated
 
 from langgraph.graph import add_messages
 from typing_extensions import TypedDict
+
+
+class ResearchPhase(str, Enum):
+    INIT = "init"
+    PLANNING = "planning"
+    RESEARCHING = "researching"
+    ANALYZING = "analyzing"
+    WRITING = "writing"
+    REVIEWING = "reviewing"
+    REVISING = "revising"
+    RE_RESEARCHING = "re_researching"
+    COMPLETED = "completed"
+
+
+class AgentLog(TypedDict):
+    timestamp: str
+    agent: str
+    action: str
+    input_summary: str
+    output_summary: str
+    duration_ms: int
+    tokens_used: int
 
 
 class ResearchState(TypedDict):
@@ -61,3 +84,8 @@ class SectionState(TypedDict):
     section_charts: list[dict]
     section_time_series: list[dict]
     section_sources: list[dict]
+
+
+class AgentState(ResearchState, total=False):
+    phase: str
+    logs: list[AgentLog]
