@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -14,8 +16,8 @@ class ResearchBrief(BaseModel):
     need_clarification: bool
     clarification_question: str = ""
     research_goal: str = ""
-    confirmed_constraints: list[str] = []
-    open_dimensions: list[str] = []
+    confirmed_constraints: list[str] = Field(default_factory=list)
+    open_dimensions: list[str] = Field(default_factory=list)
     language: str = "zh"
 
 
@@ -23,7 +25,7 @@ class Hypothesis(BaseModel):
     id: str
     statement: str
     evidence_needed: list[str]
-    status: str = "untested"
+    status: Literal["untested", "supported", "refuted", "partial"] = "untested"
 
 
 class Section(BaseModel):
@@ -39,27 +41,27 @@ class ArchitectPlan(BaseModel):
     hypotheses: list[Hypothesis]
     sections: list[Section]
     budget: dict
-    outline_status: str = "provisional"
+    outline_status: Literal["provisional"] = "provisional"
 
 
 class RevisedOutline(BaseModel):
     sections: list[Section]
-    outline_status: str = "revised"
+    outline_status: Literal["revised"] = "revised"
 
 
 class AnalystOutput(BaseModel):
-    section_facts: list[dict] = []
-    section_insights: list[str] = []
-    section_hypothesis_evidence: list[dict] = []
-    section_contradictions: list[dict] = []
-    section_entities: list[dict] = []
-    missing_info: list[str] = []
+    section_facts: list[dict] = Field(default_factory=list)
+    section_insights: list[str] = Field(default_factory=list)
+    section_hypothesis_evidence: list[dict] = Field(default_factory=list)
+    section_contradictions: list[dict] = Field(default_factory=list)
+    section_entities: list[dict] = Field(default_factory=list)
+    missing_info: list[str] = Field(default_factory=list)
 
 
 class DataWizOutput(BaseModel):
-    section_data_points: list[dict] = []
-    section_charts: list[dict] = []
-    section_time_series: list[dict] = []
+    section_data_points: list[dict] = Field(default_factory=list)
+    section_charts: list[dict] = Field(default_factory=list)
+    section_time_series: list[dict] = Field(default_factory=list)
 
 
 class SectionDraft(BaseModel):
@@ -71,8 +73,8 @@ class SectionDraft(BaseModel):
 
 
 class ReviewResult(BaseModel):
-    quality_score: int
-    verdict: str
+    quality_score: int = Field(ge=1, le=10)
+    verdict: Literal["pass", "fail"]
     issues: list[dict] = Field(default_factory=list)
     claim_checks: list[dict] = Field(default_factory=list)
     missing_aspects: list[str] = Field(default_factory=list)
@@ -89,7 +91,7 @@ class FinalResult(BaseModel):
     resolved_issues: list[dict] = Field(default_factory=list)
     unresolved_issues: list[dict] = Field(default_factory=list)
     new_issues: list[dict] = Field(default_factory=list)
-    final_score: int
-    final_verdict: str
-    publication_readiness: str
+    final_score: int = Field(ge=1, le=10)
+    final_verdict: Literal["approved", "rejected"]
+    publication_readiness: Literal["ready", "needs_review"]
     final_comments: str

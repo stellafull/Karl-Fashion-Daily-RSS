@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from deep_agents.schemas import (
     AnalystOutput,
     ArchitectPlan,
@@ -115,7 +118,7 @@ def test_section_draft_defaults() -> None:
 def test_review_result_defaults() -> None:
     model = ReviewResult(
         quality_score=9,
-        verdict="revise",
+        verdict="pass",
         issues=[{"issue": "weak evidence"}],
         claim_checks=[{"claim": "c1", "ok": False}],
     )
@@ -137,7 +140,7 @@ def test_final_result_schema() -> None:
         resolved_issues=[{"issue": "i1"}],
         unresolved_issues=[{"issue": "i2"}],
         new_issues=[{"issue": "i3"}],
-        final_score=95,
+        final_score=9,
         final_verdict="approved",
         publication_readiness="ready",
         final_comments="looks good",
@@ -147,3 +150,71 @@ def test_final_result_schema() -> None:
     assert model.unresolved_issues == [{"issue": "i2"}]
     assert model.new_issues == [{"issue": "i3"}]
     assert model.final_verdict == "approved"
+
+
+@pytest.mark.parametrize("value", ["maybe", "done", ""])
+def test_hypothesis_status_invalid_values_raise(value: str) -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis(id="h1", statement="S", evidence_needed=["E"], status=value)
+
+
+def test_architect_plan_outline_status_invalid_value_raises() -> None:
+    with pytest.raises(ValidationError):
+        ArchitectPlan(
+            research_type="trend_analysis",
+            hypotheses=[Hypothesis(id="h1", statement="A", evidence_needed=["B"])],
+            sections=[
+                Section(
+                    id="s1",
+                    title="T1",
+                    description="D1",
+                    search_queries=["q1"],
+                    priority=1,
+                )
+            ],
+            budget={"max_sections": 6},
+            outline_status="draft",
+        )
+
+
+def test_revised_outline_status_invalid_value_raises() -> None:
+    with pytest.raises(ValidationError):
+        RevisedOutline(
+            sections=[
+                Section(
+                    id="s1",
+                    title="T1",
+                    description="D1",
+                    search_queries=["q1"],
+                    priority=1,
+                )
+            ],
+            outline_status="provisional",
+        )
+
+
+def test_review_result_verdict_invalid_value_raises() -> None:
+    with pytest.raises(ValidationError):
+        ReviewResult(quality_score=5, verdict="revise")
+
+
+def test_final_result_invalid_enum_like_values_raise() -> None:
+    with pytest.raises(ValidationError):
+        FinalResult(
+            final_score=8,
+            final_verdict="pass",
+            publication_readiness="pending",
+            final_comments="x",
+        )
+
+
+def test_score_range_validation_raises_for_out_of_range_values() -> None:
+    with pytest.raises(ValidationError):
+        ReviewResult(quality_score=11, verdict="pass")
+    with pytest.raises(ValidationError):
+        FinalResult(
+            final_score=0,
+            final_verdict="approved",
+            publication_readiness="ready",
+            final_comments="x",
+        )
