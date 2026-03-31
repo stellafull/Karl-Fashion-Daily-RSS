@@ -29,9 +29,9 @@ from langgraph.config import get_store
 from mcp import McpError
 from tavily import AsyncTavilyClient
 
-from open_deep_research.configuration import Configuration, SearchAPI
-from open_deep_research.prompts import summarize_webpage_prompt
-from open_deep_research.state import ResearchComplete, Summary
+from deep_agents.configuration import Configuration, SearchAPI
+from deep_agents.prompts import summarize_webpage_prompt
+from deep_agents.schemas import ResearchComplete, Summary
 
 ##########################
 # Tavily Search Tool Utils
@@ -243,6 +243,47 @@ def think_tool(reflection: str) -> str:
         Confirmation that reflection was recorded for decision-making
     """
     return f"Reflection recorded: {reflection}"
+
+
+##########################
+# Image Analysis Tool
+##########################
+
+ANALYZE_IMAGE_DESCRIPTION = (
+    "分析时尚图片，包括秀场、lookbook 和社交媒体图片，提取廓形、色彩、单品和趋势信号。"
+)
+
+
+@tool(description=ANALYZE_IMAGE_DESCRIPTION)
+async def analyze_image(url: str, config: Annotated[RunnableConfig, InjectedToolArg] = None) -> str:
+    """使用 Kimi 2.5 多模态分析时尚图片。
+
+    Args:
+        url: Image URL (runway, lookbook, or social media photo)
+        config: Runtime configuration (injected)
+
+    Returns:
+        Chinese structured analysis of the fashion image
+    """
+    from deep_agents.prompts import analyze_image_prompt
+
+    configurable = Configuration.from_runnable_config(config)
+    model_api_key = get_api_key_for_model(configurable.research_model, config)
+    model = init_chat_model(
+        model=configurable.research_model,
+        api_key=model_api_key,
+        base_url=configurable.openai_compatible_base_url,
+        tags=["langsmith:nostream"],
+    )
+
+    response = await model.ainvoke([
+        HumanMessage(content=[
+            {"type": "image_url", "image_url": {"url": url}},
+            {"type": "text", "text": analyze_image_prompt},
+        ])
+    ])
+    return response.content
+
 
 ##########################
 # MCP Utils
@@ -577,7 +618,7 @@ async def get_all_tools(config: RunnableConfig):
         List of all configured and available tools for research operations
     """
     # Start with core research tools
-    tools = [tool(ResearchComplete), think_tool]
+    tools = [tool(ResearchComplete), think_tool, analyze_image]
     
     # Add configured search tools
     configurable = Configuration.from_runnable_config(config)
