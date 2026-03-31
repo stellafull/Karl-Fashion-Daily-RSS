@@ -1,0 +1,35 @@
+# src/deep_agents/agents/synthesizer.py
+"""Synthesizer: merge all section drafts into a complete full_report."""
+
+import json
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
+
+from deep_agents.configuration import Configuration
+from deep_agents.prompts import synthesizer_prompt
+from deep_agents.state import ResearchState
+from deep_agents.utils import get_api_key_for_model
+
+
+async def synthesizer_node(state: ResearchState, config: RunnableConfig) -> dict:
+    """Merge section drafts into full report with exec summary and references."""
+    configurable = Configuration.from_runnable_config(config)
+    model = init_chat_model(
+        model=configurable.research_model,
+        max_tokens=configurable.final_report_model_max_tokens,
+        api_key=get_api_key_for_model(configurable.final_report_model, config),
+        base_url=configurable.openai_compatible_base_url,
+    )
+
+    prompt_text = synthesizer_prompt.format(
+        research_goal=state["research_goal"],
+        language=state.get("language", "zh"),
+        section_drafts=json.dumps(state.get("section_drafts", []), ensure_ascii=False, indent=2),
+        hypothesis_evidence=json.dumps(state.get("hypothesis_evidence", [])[:20], ensure_ascii=False),
+        contradictions=json.dumps(state.get("contradictions", [])[:10], ensure_ascii=False),
+        sources=json.dumps(state.get("sources", [])[:30], ensure_ascii=False),
+    )
+
+    response = await model.ainvoke([HumanMessage(content=prompt_text)])
+    return {"full_report": response.content}
