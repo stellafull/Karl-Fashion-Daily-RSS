@@ -11,7 +11,6 @@ class ResearchState(TypedDict, total=False):
 
     need_clarification: bool
     clarification_question: str
-    clarification_answer: str
 
     research_goal: str
     confirmed_constraints: list[str]
@@ -23,6 +22,7 @@ class ResearchState(TypedDict, total=False):
     sections: list[dict]
     budget: dict
     outline_status: str
+    outline_revision_count: int
 
     facts: Annotated[list[dict], operator.add]
     data_points: Annotated[list[dict], operator.add]
@@ -44,10 +44,20 @@ class SectionState(TypedDict, total=False):
     section_id: str
     section_title: str
     section_description: str
-    section_priority: int
-    section_queries: list[str]
+    search_queries: list[str]
+    research_goal: str
+    hypotheses: list[dict]
+    budget: dict
+    language: str
 
-    scout_output: dict
-    analyst_output: dict
-    data_wiz_output: dict
+    search_results: list[dict]
+    section_facts: list[dict]
+    section_insights: list[str]
+    section_hypothesis_evidence: list[dict]
+    section_contradictions: list[dict]
+    section_entities: list[dict]
+    missing_info: list[str]
+    section_data_points: list[dict]
+    section_charts: list[dict]
+    section_time_series: list[dict]
     section_sources: list[dict]

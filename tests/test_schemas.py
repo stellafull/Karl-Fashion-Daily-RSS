@@ -27,15 +27,12 @@ def test_research_complete_schema() -> None:
 
 
 def test_research_brief_defaults() -> None:
-    model = ResearchBrief(
-        need_clarification=False,
-        clarification_question="",
-        research_goal="Daily trend report",
-        confirmed_constraints=["fashion", "recent"],
-        open_dimensions=["region"],
-    )
+    model = ResearchBrief(need_clarification=False)
+    assert model.clarification_question == ""
+    assert model.research_goal == ""
+    assert model.confirmed_constraints == []
+    assert model.open_dimensions == []
     assert model.language == "zh"
-    assert model.research_goal == "Daily trend report"
 
 
 def test_hypothesis_defaults() -> None:
@@ -93,17 +90,19 @@ def test_revised_outline_defaults() -> None:
 
 def test_analyst_output_defaults() -> None:
     model = AnalystOutput()
-    assert model.facts == []
-    assert model.insights == []
-    assert model.contradictions == []
-    assert model.open_questions == []
+    assert model.section_facts == []
+    assert model.section_insights == []
+    assert model.section_hypothesis_evidence == []
+    assert model.section_contradictions == []
+    assert model.section_entities == []
+    assert model.missing_info == []
 
 
 def test_data_wiz_output_defaults() -> None:
     model = DataWizOutput()
-    assert model.data_points == []
-    assert model.charts == []
-    assert model.hypothesis_evidence == []
+    assert model.section_data_points == []
+    assert model.section_charts == []
+    assert model.section_time_series == []
 
 
 def test_section_draft_defaults() -> None:
@@ -114,7 +113,8 @@ def test_section_draft_defaults() -> None:
 
 
 def test_review_result_defaults() -> None:
-    model = ReviewResult(quality_score=0.9, verdict="revise")
+    model = ReviewResult(quality_score=9, verdict="revise")
+    assert isinstance(model.quality_score, int)
     assert model.issues == []
     assert model.claim_checks == []
     assert model.missing_aspects == []
@@ -129,11 +129,12 @@ def test_reviser_output_defaults() -> None:
 
 def test_final_result_schema() -> None:
     model = FinalResult(
-        final_score=0.95,
+        final_score=95,
         final_verdict="approved",
         publication_readiness="ready",
         final_comments="looks good",
     )
+    assert isinstance(model.final_score, int)
     assert model.resolved_issues == []
     assert model.unresolved_issues == []
     assert model.new_issues == []
