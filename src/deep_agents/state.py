@@ -6,6 +6,12 @@ from langgraph.graph import add_messages
 from typing_extensions import TypedDict
 
 
+def override_reducer(current_value, new_value):
+    if isinstance(new_value, dict) and new_value.get("type") == "override":
+        return new_value.get("value", new_value)
+    return operator.add(current_value, new_value)
+
+
 class ResearchPhase(str, Enum):
     INIT = "init"
     PLANNING = "planning"
@@ -47,15 +53,15 @@ class ResearchState(TypedDict):
     outline_status: str
     outline_revision_count: int
 
-    facts: Annotated[list[dict], operator.add]
-    data_points: Annotated[list[dict], operator.add]
-    hypothesis_evidence: Annotated[list[dict], operator.add]
-    charts: Annotated[list[dict], operator.add]
-    insights: Annotated[list[dict], operator.add]
-    contradictions: Annotated[list[dict], operator.add]
-    sources: Annotated[list[dict], operator.add]
-    open_questions: Annotated[list[dict], operator.add]
-    section_drafts: Annotated[list[dict], operator.add]
+    facts: Annotated[list[dict], override_reducer]
+    data_points: Annotated[list[dict], override_reducer]
+    hypothesis_evidence: Annotated[list[dict], override_reducer]
+    charts: Annotated[list[dict], override_reducer]
+    insights: Annotated[list[dict], override_reducer]
+    contradictions: Annotated[list[dict], override_reducer]
+    sources: Annotated[list[dict], override_reducer]
+    open_questions: Annotated[list[dict], override_reducer]
+    section_drafts: Annotated[list[dict], override_reducer]
 
     full_report: str
     review_result: dict | None
@@ -89,3 +95,5 @@ class SectionState(TypedDict):
 class AgentState(ResearchState, total=False):
     phase: str
     logs: list[AgentLog]
+    raw_notes: Annotated[list[str], override_reducer]
+    notes: Annotated[list[str], override_reducer]
