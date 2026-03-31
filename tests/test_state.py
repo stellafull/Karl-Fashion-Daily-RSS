@@ -95,8 +95,11 @@ def test_section_state_matches_prd_shape() -> None:
     assert removed_keys.isdisjoint(set(hints.keys()))
 
 
-def test_legacy_agent_imports_smoke() -> None:
-    base_module = import_module("deep_agents.agents.base")
-    architect_module = import_module("deep_agents.agents.architect")
-    assert hasattr(base_module, "BaseAgent")
-    assert hasattr(architect_module, "ChiefArchitect")
+def test_state_compatibility_exports_smoke() -> None:
+    state_module = import_module("deep_agents.state")
+    assert hasattr(state_module, "ResearchPhase")
+    assert hasattr(state_module, "AgentLog")
+    assert hasattr(state_module, "AgentState")
+    assert state_module.ResearchPhase.INIT.value == "init"
+    assert "timestamp" in state_module.AgentLog.__annotations__
+    assert "phase" in state_module.AgentState.__annotations__
