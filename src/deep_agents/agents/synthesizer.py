@@ -16,7 +16,7 @@ async def synthesizer_node(state: ResearchState, config: RunnableConfig) -> dict
     """Merge section drafts into full report with exec summary and references."""
     configurable = Configuration.from_runnable_config(config)
     model = init_chat_model(
-        model=configurable.research_model,
+        model=configurable.final_report_model,
         max_tokens=configurable.final_report_model_max_tokens,
         api_key=get_api_key_for_model(configurable.final_report_model, config),
         base_url=configurable.openai_compatible_base_url,

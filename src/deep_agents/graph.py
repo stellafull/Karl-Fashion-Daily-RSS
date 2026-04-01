@@ -98,6 +98,7 @@ async def section_pipeline_node(state: SectionState) -> dict:
     sg = _get_section_subgraph()
     result = await sg.ainvoke(state)
     return {
+        "section_id": state["section_id"],
         "facts": result.get("section_facts", []),
         "data_points": result.get("section_data_points", []),
         "hypothesis_evidence": result.get("section_hypothesis_evidence", []),

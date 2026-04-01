@@ -49,7 +49,8 @@ async def research(request: ResearchRequest):
             "object_context": request.object_context,
         }
 
-        final_state_output = {}
+        full_report = ""
+        final_result = None
 
         try:
             async for event in graph.astream_events(input_state, config=config, version="v2"):
@@ -72,9 +73,13 @@ async def research(request: ResearchRequest):
                     if name == "clarify" and output.get("need_clarification"):
                         yield f"data: {json.dumps({'type': 'clarification', 'question': output.get('clarification_question', '')})}\n\n"
 
-                    # Track final_check output for report event
+                    # Track the latest full_report — written by synthesizer and reviser
+                    if "full_report" in output:
+                        full_report = output["full_report"]
+
+                    # Track final quality gate result
                     if name == "final_check":
-                        final_state_output = output
+                        final_result = output.get("final_result")
 
         except Exception as e:
             logger.error(f"Research pipeline error: {e}")
@@ -82,9 +87,8 @@ async def research(request: ResearchRequest):
             return
 
         # Emit report event after stream completes
-        if final_state_output:
-            report = final_state_output.get("full_report", "")
-            yield f"data: {json.dumps({'type': 'report', 'content': report})}\n\n"
+        if full_report or final_result:
+            yield f"data: {json.dumps({'type': 'report', 'content': full_report, 'final_result': final_result})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
