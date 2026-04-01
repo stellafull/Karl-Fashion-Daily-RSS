@@ -69,7 +69,7 @@ class Configuration(BaseModel):
         default=50000,
     )
     research_model: str = Field(
-        default="openai:kimi/kimi-k2.5",
+        default="openai:kimi-k2.5",
     )
     research_model_max_tokens: int = Field(
         default=10000,
@@ -81,7 +81,7 @@ class Configuration(BaseModel):
         default=8192,
     )
     final_report_model: str = Field(
-        default="openai:kimi/kimi-k2.5",
+        default="openai:kimi-k2.5",
     )
     final_report_model_max_tokens: int = Field(
         default=10000,
