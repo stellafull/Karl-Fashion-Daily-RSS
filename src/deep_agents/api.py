@@ -64,9 +64,9 @@ async def research(request: ResearchRequest):
                     # Progress event for every completed node
                     yield f"data: {json.dumps({'type': 'progress', 'node': name, 'status': 'done'})}\n\n"
 
-                    # Section done event
+                    # Section done event — section_id lives in the input, not output
                     if name == "section_pipeline":
-                        section_id = output.get("section_id", "")
+                        section_id = (data.get("input") or {}).get("section_id", "")
                         yield f"data: {json.dumps({'type': 'section_done', 'section_id': section_id})}\n\n"
 
                     # Clarification event
