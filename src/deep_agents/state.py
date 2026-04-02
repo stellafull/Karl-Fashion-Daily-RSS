@@ -49,7 +49,6 @@ class ResearchState(TypedDict):
     research_type: str
     hypotheses: list[dict]
     sections: list[dict]
-    budget: dict
     outline_status: str
     outline_revision_count: int
 
@@ -62,6 +61,7 @@ class ResearchState(TypedDict):
     sources: Annotated[list[dict], override_reducer]
     open_questions: Annotated[list[dict], override_reducer]
     section_drafts: Annotated[list[dict], override_reducer]
+    failed_sections: list[str]
 
     full_report: str
     review_result: dict | None
@@ -76,7 +76,6 @@ class SectionState(TypedDict):
     search_queries: list[str]
     research_goal: str
     hypotheses: list[dict]
-    budget: dict
     language: str
 
     search_results: list[dict]
