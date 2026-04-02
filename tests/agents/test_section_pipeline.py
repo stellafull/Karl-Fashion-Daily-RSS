@@ -13,7 +13,6 @@ def section_state():
         "search_queries": ["luxury market 2025"],
         "research_goal": "了解市场",
         "hypotheses": [],
-        "budget": {"max_searches": 5},
         "language": "zh",
         "search_results": [{"raw": "市场规模3620亿元"}],
         "section_facts": [],
@@ -62,15 +61,49 @@ async def test_data_wiz_returns_data_points(section_state, mock_config):
     assert "section_time_series" in result
 
 
-async def test_deep_scout_returns_empty_on_error(section_state, mock_config):
+async def test_deep_scout_exits_on_research_complete(section_state, mock_config):
+    """Loop exits cleanly when model calls ResearchComplete tool."""
     from deep_agents.agents.deep_scout import deep_scout_node
+    from langchain_core.messages import AIMessage
+
+    mock_ai_msg = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "ResearchComplete",
+                "args": {"reason": "research done"},
+                "id": "tc1",
+                "type": "tool_call",
+            }
+        ],
+    )
+    mock_bound_model = MagicMock()
+    mock_bound_model.ainvoke = AsyncMock(return_value=mock_ai_msg)
+    mock_model = MagicMock()
+    mock_model.bind_tools.return_value = mock_bound_model
 
     with patch("deep_agents.agents.deep_scout.get_all_tools", AsyncMock(return_value=[])):
-        with patch("deep_agents.agents.deep_scout.init_chat_model"):
-            with patch("deep_agents.agents.deep_scout.create_react_agent") as mock_cra:
-                mock_agent = MagicMock()
-                mock_agent.ainvoke = AsyncMock(side_effect=RuntimeError("search failed"))
-                mock_cra.return_value = mock_agent
-                result = await deep_scout_node(section_state, mock_config)
+        with patch("deep_agents.agents.deep_scout.init_chat_model", return_value=mock_model):
+            result = await deep_scout_node(section_state, mock_config)
+
+    mock_model.bind_tools.assert_called_once_with([])
+    mock_bound_model.ainvoke.assert_awaited_once()
+    assert "search_results" in result
+    assert "section_sources" in result
+    assert isinstance(result["search_results"], list)
+
+
+async def test_deep_scout_returns_empty_on_error(section_state, mock_config):
+    """On exception, node returns empty results without raising."""
+    from deep_agents.agents.deep_scout import deep_scout_node
+
+    mock_model = MagicMock()
+    mock_model.bind_tools.return_value.ainvoke = AsyncMock(
+        side_effect=RuntimeError("search failed")
+    )
+
+    with patch("deep_agents.agents.deep_scout.get_all_tools", AsyncMock(return_value=[])):
+        with patch("deep_agents.agents.deep_scout.init_chat_model", return_value=mock_model):
+            result = await deep_scout_node(section_state, mock_config)
     assert result["search_results"] == []
     assert result["section_sources"] == []

@@ -22,7 +22,6 @@ def sample_state():
             }
         ],
         "hypotheses": [],
-        "budget": {"max_parallel": 2, "max_searches": 5, "max_deep_reads": 3},
         "facts": [],
         "data_points": [],
         "hypothesis_evidence": [],
@@ -32,6 +31,7 @@ def sample_state():
         "sources": [],
         "open_questions": [],
         "section_drafts": [],
+        "failed_sections": [],
         "full_report": "",
         "review_result": None,
         "revision_count": 0,
