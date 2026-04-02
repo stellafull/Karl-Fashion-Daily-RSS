@@ -35,21 +35,21 @@ planner_prompt = """
 任务：
 1. 将研究分类为以下类型之一：
    trend_analysis（趋势分析）| brand_analysis（品牌分析）| market_overview（市场概况）| consumer_insight（消费者洞察）| competitive_landscape（竞争格局）
-2. 生成 2-4 个待验证的研究假设
+2. 生成 2-4 个待验证的研究假设，每个假设只需提供一句话陈述
 3. 设计 3-6 个研究章节，每章节提供 2-4 个搜索词（中英文结合）
-4. 根据研究复杂度设置执行预算
-
-预算参考：
-- 简单：max_parallel=2, max_searches=3, max_deep_reads=2
-- 中等：max_parallel=3, max_searches=5, max_deep_reads=3
-- 复杂：max_parallel=4, max_searches=7, max_deep_reads=4
 
 时尚研究指引：
 - 趋势研究需覆盖：秀场、社交媒体、零售数据三个维度
 - 品牌研究需覆盖：财报、品牌定位、消费者认知
 - 优先引用：BoF、WWD、Vogue Runway、Lyst、Edited 等权威来源
 
-以有效 JSON 格式响应，包含字段：research_type, hypotheses（id/statement/evidence_needed/status）, sections（id/title/description/search_queries/priority）, budget（max_parallel/max_searches/max_deep_reads）, outline_status
+输出约束：
+- 只输出一个有效 JSON 对象，不要输出 Markdown、解释文字或代码块
+- research_type 必须是以下之一：trend_analysis、brand_analysis、market_overview、consumer_insight、competitive_landscape
+- hypotheses 是字符串数组，每条只包含假设陈述文字，不含 ID、状态、优先级或其他字段
+- sections 每条包含：title、description、search_queries（字符串数组），不含 ID、priority 或其他字段
+
+以有效 JSON 格式响应，包含字段：research_type, hypotheses（字符串数组）, sections（每条含 title/description/search_queries）
 """.strip()
 
 outline_reviser_prompt = """
@@ -80,7 +80,6 @@ deep_scout_prompt = """
 {search_queries}
 待验证假设：
 {hypotheses}
-预算：最多 {max_searches} 次搜索
 
 你是时尚行业深度研究员，负责为单个章节收集证据。
 
@@ -95,7 +94,7 @@ deep_scout_prompt = """
 3. 优先深读 tier-1/2 来源（BoF、WWD、Vogue Runway、Lyst、Edited）
 4. 对视觉趋势话题使用 analyze_image
 5. 同时收集支持和反驳假设的证据
-6. 达到预算上限、结果重复或已足够全面时停止
+6. 结果重复或已足够全面时停止
 
 重要规则：
 - 保留矛盾信息，不要强行统一
