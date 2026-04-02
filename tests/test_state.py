@@ -47,6 +47,11 @@ def test_research_state_has_outline_revision_count() -> None:
     assert "outline_revision_count" in hints
 
 
+def test_failed_sections_field_exists() -> None:
+    hints = get_type_hints(ResearchState, include_extras=True)
+    assert "failed_sections" in hints
+
+
 def test_research_state_collection_fields_use_operator_add_reducer() -> None:
     hints = get_type_hints(ResearchState, include_extras=True)
     reducer_fields = [
@@ -83,7 +88,6 @@ def test_section_state_matches_prd_shape() -> None:
         "search_queries",
         "research_goal",
         "hypotheses",
-        "budget",
         "language",
         "search_results",
         "section_facts",
@@ -98,6 +102,7 @@ def test_section_state_matches_prd_shape() -> None:
         "section_sources",
     }
     removed_keys = {
+        "budget",
         "section_priority",
         "section_queries",
         "scout_output",
@@ -107,6 +112,11 @@ def test_section_state_matches_prd_shape() -> None:
 
     assert required_keys.issubset(set(hints.keys()))
     assert removed_keys.isdisjoint(set(hints.keys()))
+
+
+def test_research_state_has_no_budget_field() -> None:
+    hints = get_type_hints(ResearchState, include_extras=True)
+    assert "budget" not in hints
 
 
 def test_state_compatibility_exports_smoke() -> None:
