@@ -3,17 +3,18 @@ from pydantic import ValidationError
 
 from deep_agents.schemas import (
     AnalystOutput,
-    ArchitectPlan,
     DataWizOutput,
     FinalResult,
-    Hypothesis,
+    PlannerHypothesis,
+    PlannerSection,
     ResearchBrief,
     ResearchComplete,
     ReviewResult,
-    ReviserOutput,
     RevisedOutline,
+    ReviserOutput,
     Section,
     SectionDraft,
+    SimplifiedPlan,
     Summary,
 )
 
@@ -38,10 +39,36 @@ def test_research_brief_defaults() -> None:
     assert model.language == "zh"
 
 
-def test_hypothesis_defaults() -> None:
-    model = Hypothesis(id="h1", statement="X is rising", evidence_needed=["sales data"])
-    assert model.status == "untested"
-    assert model.id == "h1"
+def test_planner_hypothesis_schema() -> None:
+    model = PlannerHypothesis(statement="X is rising")
+    assert model.statement == "X is rising"
+
+
+def test_planner_section_schema() -> None:
+    model = PlannerSection(
+        title="Market Snapshot",
+        description="Topline market movement",
+        search_queries=["fashion market 2026", "luxury sales report"],
+    )
+    assert model.title == "Market Snapshot"
+    assert len(model.search_queries) == 2
+
+
+def test_simplified_plan_schema() -> None:
+    model = SimplifiedPlan(
+        research_type="trend_analysis",
+        hypotheses=[PlannerHypothesis(statement="A is rising")],
+        sections=[
+            PlannerSection(
+                title="T1",
+                description="D1",
+                search_queries=["q1"],
+            )
+        ],
+    )
+    assert model.research_type == "trend_analysis"
+    assert len(model.hypotheses) == 1
+    assert len(model.sections) == 1
 
 
 def test_section_schema() -> None:
@@ -54,25 +81,6 @@ def test_section_schema() -> None:
     )
     assert model.title == "Market Snapshot"
     assert model.search_queries[0] == "fashion market 2026"
-
-
-def test_architect_plan_defaults() -> None:
-    model = ArchitectPlan(
-        research_type="trend_analysis",
-        hypotheses=[Hypothesis(id="h1", statement="A", evidence_needed=["B"])],
-        sections=[
-            Section(
-                id="s1",
-                title="T1",
-                description="D1",
-                search_queries=["q1"],
-                priority=1,
-            )
-        ],
-        budget={"max_sections": 6},
-    )
-    assert model.outline_status == "provisional"
-    assert len(model.hypotheses) == 1
 
 
 def test_revised_outline_defaults() -> None:
@@ -150,31 +158,6 @@ def test_final_result_schema() -> None:
     assert model.unresolved_issues == [{"issue": "i2"}]
     assert model.new_issues == [{"issue": "i3"}]
     assert model.final_verdict == "approved"
-
-
-@pytest.mark.parametrize("value", ["maybe", "done", ""])
-def test_hypothesis_status_invalid_values_raise(value: str) -> None:
-    with pytest.raises(ValidationError):
-        Hypothesis(id="h1", statement="S", evidence_needed=["E"], status=value)
-
-
-def test_architect_plan_outline_status_invalid_value_raises() -> None:
-    with pytest.raises(ValidationError):
-        ArchitectPlan(
-            research_type="trend_analysis",
-            hypotheses=[Hypothesis(id="h1", statement="A", evidence_needed=["B"])],
-            sections=[
-                Section(
-                    id="s1",
-                    title="T1",
-                    description="D1",
-                    search_queries=["q1"],
-                    priority=1,
-                )
-            ],
-            budget={"max_sections": 6},
-            outline_status="draft",
-        )
 
 
 def test_revised_outline_status_invalid_value_raises() -> None:
