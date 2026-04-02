@@ -21,11 +21,20 @@ class ResearchBrief(BaseModel):
     language: str = "zh"
 
 
-class Hypothesis(BaseModel):
-    id: str
+class PlannerHypothesis(BaseModel):
     statement: str
-    evidence_needed: list[str]
-    status: Literal["untested", "supported", "refuted", "partial"] = "untested"
+
+
+class PlannerSection(BaseModel):
+    title: str
+    description: str
+    search_queries: list[str]
+
+
+class SimplifiedPlan(BaseModel):
+    research_type: str
+    hypotheses: list[PlannerHypothesis]
+    sections: list[PlannerSection]
 
 
 class Section(BaseModel):
@@ -34,14 +43,6 @@ class Section(BaseModel):
     description: str
     search_queries: list[str]
     priority: int
-
-
-class ArchitectPlan(BaseModel):
-    research_type: str
-    hypotheses: list[Hypothesis]
-    sections: list[Section]
-    budget: dict
-    outline_status: Literal["provisional"] = "provisional"
 
 
 class RevisedOutline(BaseModel):
