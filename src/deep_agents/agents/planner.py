@@ -1,8 +1,8 @@
-"""Planner node — generates the initial research plan (ArchitectPlan).
+"""Planner node — generates the initial research plan.
 
 Reads research_goal, confirmed_constraints, open_dimensions, and language from state,
-calls the LLM with structured output to produce an ArchitectPlan, then returns the
-relevant state fields.
+calls the LLM with structured output to produce a SimplifiedPlan, then normalizes the
+result into the runtime shape expected by downstream nodes.
 """
 
 from langchain.chat_models import init_chat_model
@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import planner_prompt
-from deep_agents.schemas import ArchitectPlan
+from deep_agents.schemas import SimplifiedPlan
 from deep_agents.state import ResearchState
 from deep_agents.utils import get_api_key_for_model, get_today_str
 
@@ -27,7 +27,7 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
         )
-        .with_structured_output(ArchitectPlan)
+        .with_structured_output(SimplifiedPlan)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
     )
 
@@ -44,13 +44,33 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
         language=language,
     )
 
-    plan: ArchitectPlan = await model.ainvoke([HumanMessage(content=prompt_text)])
+    plan: SimplifiedPlan = await model.ainvoke([HumanMessage(content=prompt_text)])
+
+    hypotheses = [
+        {
+            "id": f"h_{i + 1}",
+            "statement": h.statement,
+            "evidence_needed": [],
+            "status": "untested",
+        }
+        for i, h in enumerate(plan.hypotheses)
+    ]
+
+    sections = [
+        {
+            "id": f"sec_{i + 1}",
+            "title": s.title,
+            "description": s.description,
+            "search_queries": s.search_queries,
+            "priority": i + 1,
+        }
+        for i, s in enumerate(plan.sections)
+    ]
 
     return {
         "research_type": plan.research_type,
-        "hypotheses": [h.model_dump() for h in plan.hypotheses],
-        "sections": [s.model_dump() for s in plan.sections],
-        "budget": plan.budget,
-        "outline_status": plan.outline_status,
+        "hypotheses": hypotheses,
+        "sections": sections,
+        "outline_status": "provisional",
         "outline_revision_count": 0,
     }
