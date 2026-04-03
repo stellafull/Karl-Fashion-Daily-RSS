@@ -49,7 +49,7 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
     hypotheses = [
         {
             "id": f"h_{i + 1}",
-            "statement": h.statement,
+            "statement": h,
             "evidence_needed": [],
             "status": "untested",
         }

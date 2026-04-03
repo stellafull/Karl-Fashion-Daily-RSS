@@ -21,10 +21,6 @@ class ResearchBrief(BaseModel):
     language: str = "zh"
 
 
-class PlannerHypothesis(BaseModel):
-    statement: str
-
-
 class PlannerSection(BaseModel):
     title: str
     description: str
@@ -33,7 +29,7 @@ class PlannerSection(BaseModel):
 
 class SimplifiedPlan(BaseModel):
     research_type: str
-    hypotheses: list[PlannerHypothesis]
+    hypotheses: list[str]
     sections: list[PlannerSection]
 
 

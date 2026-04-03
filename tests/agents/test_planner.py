@@ -1,6 +1,6 @@
 """Tests for planner_node and outline_reviser_node."""
 from unittest.mock import AsyncMock, MagicMock, patch
-from deep_agents.schemas import PlannerHypothesis, PlannerSection, RevisedOutline, Section, SimplifiedPlan
+from deep_agents.schemas import PlannerSection, RevisedOutline, Section, SimplifiedPlan
 
 
 async def test_planner_node_returns_normalized_shape(mock_config):
@@ -8,7 +8,7 @@ async def test_planner_node_returns_normalized_shape(mock_config):
 
     mock_plan = SimplifiedPlan(
         research_type="trend_analysis",
-        hypotheses=[PlannerHypothesis(statement="X is rising")],
+        hypotheses=["X is rising"],
         sections=[
             PlannerSection(title="T", description="D", search_queries=["q"])
         ],
@@ -51,10 +51,7 @@ async def test_planner_node_ids_increment_correctly(mock_config):
 
     mock_plan = SimplifiedPlan(
         research_type="market_overview",
-        hypotheses=[
-            PlannerHypothesis(statement="H1"),
-            PlannerHypothesis(statement="H2"),
-        ],
+        hypotheses=["H1", "H2"],
         sections=[
             PlannerSection(title="S1", description="D1", search_queries=["q1"]),
             PlannerSection(title="S2", description="D2", search_queries=["q2"]),

@@ -5,7 +5,6 @@ from deep_agents.schemas import (
     AnalystOutput,
     DataWizOutput,
     FinalResult,
-    PlannerHypothesis,
     PlannerSection,
     ResearchBrief,
     ResearchComplete,
@@ -39,11 +38,6 @@ def test_research_brief_defaults() -> None:
     assert model.language == "zh"
 
 
-def test_planner_hypothesis_schema() -> None:
-    model = PlannerHypothesis(statement="X is rising")
-    assert model.statement == "X is rising"
-
-
 def test_planner_section_schema() -> None:
     model = PlannerSection(
         title="Market Snapshot",
@@ -57,7 +51,7 @@ def test_planner_section_schema() -> None:
 def test_simplified_plan_schema() -> None:
     model = SimplifiedPlan(
         research_type="trend_analysis",
-        hypotheses=[PlannerHypothesis(statement="A is rising")],
+        hypotheses=["A is rising"],
         sections=[
             PlannerSection(
                 title="T1",
