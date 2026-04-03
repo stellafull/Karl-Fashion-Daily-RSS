@@ -1,7 +1,7 @@
 # tests/test_api.py
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 import httpx
 
 
@@ -15,18 +15,14 @@ def client():
 async def test_research_endpoint_clarification_event(client):
     """When clarify returns need_clarification=True, stream should emit clarification event."""
 
-    async def mock_astream_events(input_state, config, version):
-        yield {
-            "event": "on_chain_end",
-            "name": "clarify",
-            "data": {"output": {
-                "need_clarification": True,
-                "clarification_question": "请问您关注哪个品类？",
-            }},
-        }
+    async def mock_astream(input_state, config, stream_mode):
+        yield {"clarify": {
+            "need_clarification": True,
+            "clarification_question": "请问您关注哪个品类？",
+        }}
 
     mock_graph = MagicMock()
-    mock_graph.astream_events = mock_astream_events
+    mock_graph.astream = mock_astream
 
     with patch("deep_agents.api.get_graph", return_value=mock_graph):
         response = await client.post("/research", json={
@@ -46,15 +42,13 @@ async def test_research_endpoint_clarification_event(client):
 async def test_research_endpoint_report_event(client):
     """Full pipeline: should stream progress events and end with report event."""
 
-    async def mock_astream_events(input_state, config, version):
-        yield {"event": "on_chain_end", "name": "planner", "data": {"output": {}}}
-        yield {"event": "on_chain_end", "name": "section_pipeline",
-               "data": {"output": {"section_id": "sec_1"}}}
-        yield {"event": "on_chain_end", "name": "final_check",
-               "data": {"output": {"full_report": "# 最终报告\n\n内容...", "final_result": {}}}}
+    async def mock_astream(input_state, config, stream_mode):
+        yield {"planner": {"research_type": "trend_analysis", "hypotheses": [], "sections": []}}
+        yield {"section_pipeline": {"facts": [], "data_points": []}}
+        yield {"final_check": {"full_report": "# 最终报告\n\n内容...", "final_result": {}}}
 
     mock_graph = MagicMock()
-    mock_graph.astream_events = mock_astream_events
+    mock_graph.astream = mock_astream
 
     with patch("deep_agents.api.get_graph", return_value=mock_graph):
         response = await client.post("/research", json={
@@ -66,7 +60,6 @@ async def test_research_endpoint_report_event(client):
     events = [json.loads(line[6:]) for line in response.text.split("\n\n") if line.startswith("data: ")]
     event_types = [e["type"] for e in events]
     assert "progress" in event_types
-    assert "section_done" in event_types
     assert "report" in event_types
     report_event = next(e for e in events if e["type"] == "report")
     assert "最终报告" in report_event["content"]
@@ -75,12 +68,12 @@ async def test_research_endpoint_report_event(client):
 async def test_research_endpoint_error_event(client):
     """Unhandled exception should produce error event."""
 
-    async def mock_astream_events(input_state, config, version):
+    async def mock_astream(input_state, config, stream_mode):
         raise RuntimeError("LLM call failed")
         yield  # make it a generator
 
     mock_graph = MagicMock()
-    mock_graph.astream_events = mock_astream_events
+    mock_graph.astream = mock_astream
 
     with patch("deep_agents.api.get_graph", return_value=mock_graph):
         response = await client.post("/research", json={

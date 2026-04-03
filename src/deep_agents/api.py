@@ -53,33 +53,27 @@ async def research(request: ResearchRequest):
         final_result = None
 
         try:
-            async for event in graph.astream_events(input_state, config=config, version="v2"):
-                kind = event.get("event")
-                name = event.get("name", "")
-                data = event.get("data", {})
-
-                if kind == "on_chain_end" and name in NODE_NAMES:
-                    output = data.get("output") or {}
+            async for chunk in graph.astream(input_state, config=config, stream_mode="updates"):
+                for node_name, state_update in chunk.items():
+                    if node_name not in NODE_NAMES:
+                        continue
+                    if not isinstance(state_update, dict):
+                        continue
 
                     # Progress event for every completed node
-                    yield f"data: {json.dumps({'type': 'progress', 'node': name, 'status': 'done'})}\n\n"
-
-                    # Section done event — section_id lives in the input, not output
-                    if name == "section_pipeline":
-                        section_id = (data.get("input") or {}).get("section_id", "")
-                        yield f"data: {json.dumps({'type': 'section_done', 'section_id': section_id})}\n\n"
+                    yield f"data: {json.dumps({'type': 'progress', 'node': node_name, 'status': 'done'})}\n\n"
 
                     # Clarification event
-                    if name == "clarify" and output.get("need_clarification"):
-                        yield f"data: {json.dumps({'type': 'clarification', 'question': output.get('clarification_question', '')})}\n\n"
+                    if node_name == "clarify" and state_update.get("need_clarification"):
+                        yield f"data: {json.dumps({'type': 'clarification', 'question': state_update.get('clarification_question', '')})}\n\n"
 
                     # Track the latest full_report — written by synthesizer and reviser
-                    if "full_report" in output:
-                        full_report = output["full_report"]
+                    if "full_report" in state_update:
+                        full_report = state_update["full_report"]
 
                     # Track final quality gate result
-                    if name == "final_check":
-                        final_result = output.get("final_result")
+                    if node_name == "final_check":
+                        final_result = state_update.get("final_result")
 
         except Exception as e:
             logger.error(f"Research pipeline error: {e}")
