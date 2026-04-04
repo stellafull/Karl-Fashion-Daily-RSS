@@ -13,7 +13,7 @@ This design intentionally removes provenance machinery that drifted into the imp
 
 ## Design Decisions
 
-- Canonical source identity is the `url`
+- Canonical source identity is the `url` returned by the search tool
 - Canonical source shape is:
 
 ```python
@@ -25,7 +25,7 @@ This design intentionally removes provenance machinery that drifted into the imp
 ```
 
 - `source_id`, `source_id_a`, `source_id_b`, and source credibility scoring are removed from business-facing contracts
-- `section_id` remains a runtime routing field where needed, but is not part of the model-facing citation contract
+- `section_id` and `hypothesis_id` remain runtime routing/linkage fields where needed, but are not part of the model-facing contract
 - `writer` receives only section-local evidence plus a global `sections_list`
 - `writer` does not receive prior section body text or memoized content
 - `synthesizer` becomes the only layer responsible for:
@@ -88,7 +88,7 @@ class SectionFact(BaseModel):
 
 
 class HypothesisEvidence(BaseModel):
-    hypothesis_id: str
+    hypothesis_statement: str
     evidence_type: str
     content: str
     source_url: str
@@ -102,7 +102,6 @@ class Contradiction(BaseModel):
 
 
 class DataPoint(BaseModel):
-    id: str
     name: str
     value: str | int | float
     unit: str | None = None
@@ -151,6 +150,7 @@ Required citation behavior:
 
 - every fact must carry `source_url`
 - every hypothesis evidence record must carry `source_url`
+- every hypothesis evidence record must reference a hypothesis by statement, not runtime ID
 - every contradiction must carry `source_url_a` and `source_url_b`
 
 The schema, not only the prompt, must enforce this.
@@ -201,6 +201,8 @@ Why:
 - serial writing forces unnecessary context coupling
 - serial writing caused drift such as `previous_sections_memo` and prompt-level `section_id`
 - global coherence is already the job of `synthesizer`
+
+Because `outline_reviser` runs before `lead_writer`, writer tasks are dispatched only after the final post-revision section list is fixed. No writer requeue mechanism is needed in this design.
 
 ### Writer input contract
 
@@ -267,6 +269,7 @@ This is the correct place for whole-report coherence. It should not be approxima
 - fixed source white-lists such as BoF / WWD / Vogue Runway / Lyst / Edited
 - tier-1 / tier-2 source ranking language
 - all `source_id` field requirements
+- all model-facing `hypothesis_id` requirements
 - `章节ID：{section_id}` from writer prompt
 - any writer prompt dependency on previous section body content
 
@@ -277,6 +280,7 @@ This is the correct place for whole-report coherence. It should not be approxima
   - prefer official / first-party / primary data where available
 - URL-based citation wording:
   - facts/evidence/data points must include `source_url`
+  - hypothesis evidence should refer to the target hypothesis by statement text, not runtime ID
   - citations must include `url` and `title`
 
 ## Keep / Modify / Delete
@@ -286,6 +290,7 @@ This is the correct place for whole-report coherence. It should not be approxima
 - top-level graph topology
 - section subgraph topology
 - runtime `section_id` for section scoping and aggregation
+- runtime `hypothesis_id` for internal graph linkage if still needed
 - source fields: `url`, `title`, `summary`
 - `sections_list` in writer prompt
 
@@ -293,12 +298,14 @@ This is the correct place for whole-report coherence. It should not be approxima
 
 - `AnalystOutput` and `DataWizOutput` from loose `list[dict]` into strong typed models
 - graph merge validation from `source_id`-based to URL-based
+- hypothesis evidence linkage from model-facing `hypothesis_id` to model-facing `hypothesis_statement`
 - writer from serial loop with contextual memoing to parallel section drafting
 - citations and claim checks from `source_id`-based to URL-based
 
 ### Delete
 
 - `source_id`, `source_id_a`, `source_id_b`
+- model-facing `hypothesis_id`
 - `_global_source_id`
 - source ID remapping tables in graph merge
 - `credibility_score`
@@ -312,7 +319,7 @@ This is the correct place for whole-report coherence. It should not be approxima
 | File | Intent |
 |------|--------|
 | `src/deep_agents/agents/deep_scout.py` | remove synthetic source metadata; keep `url/title/summary` only |
-| `src/deep_agents/schemas.py` | introduce strong typed URL-based evidence models |
+| `src/deep_agents/schemas.py` | introduce strong typed URL-based evidence models; remove `DataPoint.id`; remove model-facing `hypothesis_id` |
 | `src/deep_agents/prompts.py` | remove `source_id` wording, remove source white-list, remove writer `section_id` and previous-content dependency |
 | `src/deep_agents/agents/analyst.py` | switch to strong typed URL-based output |
 | `src/deep_agents/agents/data_wiz.py` | switch to strong typed URL-based output |
@@ -333,3 +340,4 @@ This is the correct place for whole-report coherence. It should not be approxima
 - The current implementation drifted from a simple citation design into a synthetic provenance system.
 - The bug now surfacing (`Missing required source_id`) is evidence of that drift, not an isolated defect.
 - The clean fix is to simplify the contract, not to keep patching `source_id` enforcement deeper into the graph.
+- Search-tool URLs are treated as canonical directly; this design does not introduce extra URL normalization rules.
