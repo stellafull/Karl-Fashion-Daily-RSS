@@ -47,9 +47,9 @@ def test_research_state_has_outline_revision_count() -> None:
     assert "outline_revision_count" in hints
 
 
-def test_failed_sections_field_exists() -> None:
+def test_failed_sections_field_removed() -> None:
     hints = get_type_hints(ResearchState, include_extras=True)
-    assert "failed_sections" in hints
+    assert "failed_sections" not in hints
 
 
 def test_research_state_collection_fields_use_operator_add_reducer() -> None:

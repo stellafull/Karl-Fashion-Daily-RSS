@@ -2,7 +2,7 @@ import operator
 from enum import Enum
 from typing import Annotated
 
-from langgraph.graph import add_messages
+from langgraph.graph import MessagesState
 from typing_extensions import TypedDict
 
 
@@ -34,10 +34,11 @@ class AgentLog(TypedDict):
     tokens_used: int
 
 
-class ResearchState(TypedDict):
-    messages: Annotated[list, add_messages]
+class ResearchInputState(MessagesState, total=False):
     object_context: str | None
 
+
+class ResearchState(ResearchInputState):
     need_clarification: bool
     clarification_question: str
 
@@ -61,7 +62,6 @@ class ResearchState(TypedDict):
     sources: Annotated[list[dict], override_reducer]
     open_questions: Annotated[list[dict], override_reducer]
     section_drafts: Annotated[list[dict], override_reducer]
-    failed_sections: list[str]
 
     full_report: str
     review_result: dict | None

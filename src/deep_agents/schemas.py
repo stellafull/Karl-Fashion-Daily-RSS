@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 
 class Summary(BaseModel):
@@ -30,7 +30,7 @@ class PlannerSection(BaseModel):
 class SimplifiedPlan(BaseModel):
     research_type: str
     hypotheses: list[str]
-    sections: list[PlannerSection]
+    sections: list[PlannerSection] = Field(min_length=1)
 
 
 class Section(BaseModel):
@@ -46,25 +46,84 @@ class RevisedOutline(BaseModel):
     outline_status: Literal["revised"] = "revised"
 
 
+class Source(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    title: str
+    summary: str
+
+
+class SectionFact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str
+    source_url: str
+    importance: str
+
+
+class HypothesisEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis_statement: str
+    evidence_type: str
+    content: str
+    source_url: str
+
+
+class Contradiction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim_a: str
+    claim_b: str
+    source_url_a: str
+    source_url_b: str
+
+
+class DataPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    value: str | int | float
+    unit: str | None = None
+    year: int | None = None
+    source_url: str
+    category: str | None = None
+    confidence: str | None = None
+
+
 class AnalystOutput(BaseModel):
-    section_facts: list[dict] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+
+    section_facts: list[SectionFact] = Field(default_factory=list)
     section_insights: list[str] = Field(default_factory=list)
-    section_hypothesis_evidence: list[dict] = Field(default_factory=list)
-    section_contradictions: list[dict] = Field(default_factory=list)
+    section_hypothesis_evidence: list[HypothesisEvidence] = Field(default_factory=list)
+    section_contradictions: list[Contradiction] = Field(default_factory=list)
     section_entities: list[dict] = Field(default_factory=list)
     missing_info: list[str] = Field(default_factory=list)
 
 
 class DataWizOutput(BaseModel):
-    section_data_points: list[dict] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+
+    section_data_points: list[DataPoint] = Field(default_factory=list)
     section_charts: list[dict] = Field(default_factory=list)
     section_time_series: list[dict] = Field(default_factory=list)
 
 
+class Citation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    url: str
+    title: str
+
+
 class SectionDraft(BaseModel):
-    section_id: str
+    model_config = ConfigDict(extra="forbid")
+
     content: str
-    citations: list[dict] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     charts_used: list[str] = Field(default_factory=list)
     weak_claims: list[str] = Field(default_factory=list)
 

@@ -1,19 +1,22 @@
 """Clarify node — entry point of the research graph.
 
-Reads the conversation messages (and optional image context), calls Kimi 2.5 with
-structured output to produce a ResearchBrief, then returns the relevant state fields.
-If need_clarification=True the graph is expected to route to END so the user can answer.
+Reads the conversation messages (and optional image context), calls the model with
+structured output to produce a ResearchBrief, then returns a Command routing to
+"planner" or END based on whether clarification is needed.
 """
+from typing import Literal
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END
+from langgraph.types import Command
 
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import clarify_prompt
 from deep_agents.schemas import ResearchBrief
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model, get_today_str
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model, get_today_str
 
 
 def _format_messages(messages: list) -> str:
@@ -24,7 +27,6 @@ def _format_messages(messages: list) -> str:
             role = msg.get("role", "user")
             content = msg.get("content", "")
         else:
-            # LangChain message object — derive role from class name
             class_name = type(msg).__name__.lower()
             if "human" in class_name:
                 role = "user"
@@ -39,8 +41,10 @@ def _format_messages(messages: list) -> str:
     return "\n".join(lines)
 
 
-async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
-    """Entry-point node that decides whether clarification is needed or extracts a research goal."""
+async def clarify_node(
+    state: ResearchState, config: RunnableConfig
+) -> Command[Literal["planner"]]:
+    """Entry-point node. Returns Command(goto=END) if clarification needed, else Command(goto='planner')."""
     configurable = Configuration.from_runnable_config(config)
 
     model = (
@@ -49,6 +53,7 @@ async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(ResearchBrief)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -56,7 +61,6 @@ async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
 
     messages = state.get("messages", [])
     object_context = state.get("object_context")
-
     messages_text = _format_messages(messages)
 
     image_context_str = ""
@@ -68,9 +72,9 @@ async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
         messages=messages_text,
         image_context=image_context_str,
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     if object_context:
-        # Build a multimodal HumanMessage with the image attached
         invoke_input = [
             HumanMessage(
                 content=[
@@ -84,7 +88,7 @@ async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
 
     brief: ResearchBrief = await model.ainvoke(invoke_input)
 
-    return {
+    update = {
         "need_clarification": brief.need_clarification,
         "clarification_question": brief.clarification_question,
         "research_goal": brief.research_goal,
@@ -92,3 +96,7 @@ async def clarify_node(state: ResearchState, config: RunnableConfig) -> dict:
         "open_dimensions": brief.open_dimensions,
         "language": brief.language,
     }
+
+    if brief.need_clarification:
+        return Command(goto=END, update=update)
+    return Command(goto="planner", update=update)

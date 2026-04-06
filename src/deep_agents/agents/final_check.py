@@ -10,7 +10,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import final_check_prompt
 from deep_agents.schemas import FinalResult
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
 async def final_check_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -22,6 +22,7 @@ async def final_check_node(state: ResearchState, config: RunnableConfig) -> dict
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(FinalResult)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -33,6 +34,7 @@ async def final_check_node(state: ResearchState, config: RunnableConfig) -> dict
         full_report=state.get("full_report", ""),
         revision_count=state.get("revision_count", 0),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     result: FinalResult = await model.ainvoke([HumanMessage(content=prompt_text)])
     return {"final_result": result.model_dump()}

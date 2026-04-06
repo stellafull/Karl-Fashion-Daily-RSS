@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import trend_triangulator_prompt
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
 async def trend_triangulator_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -27,6 +27,7 @@ async def trend_triangulator_node(state: ResearchState, config: RunnableConfig) 
         facts=json.dumps(state.get("facts", [])[:30], ensure_ascii=False),
         sources=json.dumps(state.get("sources", [])[:30], ensure_ascii=False),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     response = await model.ainvoke([HumanMessage(content=prompt_text)])
     return {"full_report": response.content}

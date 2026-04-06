@@ -13,7 +13,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import planner_prompt
 from deep_agents.schemas import SimplifiedPlan
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model, get_today_str
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model, get_today_str
 
 
 async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -26,6 +26,7 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(SimplifiedPlan)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -43,6 +44,7 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
         open_dimensions=open_dimensions,
         language=language,
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     plan: SimplifiedPlan = await model.ainvoke([HumanMessage(content=prompt_text)])
 

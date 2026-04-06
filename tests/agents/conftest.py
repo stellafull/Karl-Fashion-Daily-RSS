@@ -31,7 +31,6 @@ def sample_state():
         "sources": [],
         "open_questions": [],
         "section_drafts": [],
-        "failed_sections": [],
         "full_report": "",
         "review_result": None,
         "revision_count": 0,

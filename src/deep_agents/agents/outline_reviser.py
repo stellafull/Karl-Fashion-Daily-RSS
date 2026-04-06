@@ -15,7 +15,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import outline_reviser_prompt
 from deep_agents.schemas import RevisedOutline
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
 async def outline_reviser_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -28,6 +28,7 @@ async def outline_reviser_node(state: ResearchState, config: RunnableConfig) -> 
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(RevisedOutline)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -46,6 +47,7 @@ async def outline_reviser_node(state: ResearchState, config: RunnableConfig) -> 
         sections=json.dumps(sections, ensure_ascii=False),
         hypothesis_evidence=json.dumps(recent_evidence, ensure_ascii=False),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     result: RevisedOutline = await model.ainvoke([HumanMessage(content=prompt_text)])
 

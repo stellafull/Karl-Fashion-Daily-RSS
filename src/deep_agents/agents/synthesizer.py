@@ -1,19 +1,22 @@
-# src/deep_agents/agents/synthesizer.py
 """Synthesizer: merge all section drafts into a complete full_report."""
-
 import json
+from typing import Literal
+
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command
 
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import synthesizer_prompt
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
-async def synthesizer_node(state: ResearchState, config: RunnableConfig) -> dict:
-    """Merge section drafts into full report with exec summary and references."""
+async def synthesizer_node(
+    state: ResearchState, config: RunnableConfig
+) -> Command[Literal["trend_triangulator", "reviewer"]]:
+    """Merge section drafts into full report; route to trend_triangulator or reviewer."""
     configurable = Configuration.from_runnable_config(config)
     model = init_chat_model(
         model=configurable.final_report_model,
@@ -25,11 +28,22 @@ async def synthesizer_node(state: ResearchState, config: RunnableConfig) -> dict
     prompt_text = synthesizer_prompt.format(
         research_goal=state["research_goal"],
         language=state.get("language", "zh"),
-        section_drafts=json.dumps(state.get("section_drafts", []), ensure_ascii=False, indent=2),
-        hypothesis_evidence=json.dumps(state.get("hypothesis_evidence", [])[:20], ensure_ascii=False),
+        section_drafts=json.dumps(
+            state.get("section_drafts", []), ensure_ascii=False, indent=2
+        ),
+        hypothesis_evidence=json.dumps(
+            state.get("hypothesis_evidence", [])[:20], ensure_ascii=False
+        ),
         contradictions=json.dumps(state.get("contradictions", [])[:10], ensure_ascii=False),
         sources=json.dumps(state.get("sources", [])[:30], ensure_ascii=False),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     response = await model.ainvoke([HumanMessage(content=prompt_text)])
-    return {"full_report": response.content}
+
+    next_node = (
+        "trend_triangulator"
+        if state.get("research_type") == "trend_analysis"
+        else "reviewer"
+    )
+    return Command(goto=next_node, update={"full_report": response.content})

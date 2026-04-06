@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -32,6 +33,19 @@ from tavily import AsyncTavilyClient
 from deep_agents.configuration import Configuration, SearchAPI
 from deep_agents.prompts import summarize_webpage_prompt
 from deep_agents.schemas import ResearchComplete, Summary
+
+
+def _strip_ctrl(obj):
+    """Recursively strip non-printable control characters from string data.
+    Keeps \x09 (tab), \x0a (newline), \x0d (carriage return) — valid in text.
+    """
+    if isinstance(obj, str):
+        return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", obj)
+    if isinstance(obj, list):
+        return [_strip_ctrl(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: _strip_ctrl(v) for k, v in obj.items()}
+    return obj
 
 ##########################
 # Tavily Search Tool Utils
@@ -342,6 +356,8 @@ async def get_tokens(config: RunnableConfig):
         Token dictionary if valid and not expired, None otherwise
     """
     store = get_store()
+    if store is None:
+        return None
     
     # Extract required identifiers from config
     thread_id = config.get("configurable", {}).get("thread_id")
@@ -378,6 +394,8 @@ async def set_tokens(config: RunnableConfig, tokens: dict[str, Any]):
         tokens: Token dictionary to store
     """
     store = get_store()
+    if store is None:
+        return
     
     # Extract required identifiers from config
     thread_id = config.get("configurable", {}).get("thread_id")

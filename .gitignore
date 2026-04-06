@@ -11,6 +11,18 @@ wheels/
 
 # environment variables
 .env
+.codex
+doc/
+docs/
+
+# test
+tests/
+
+# Configuration files
+/pyproject.toml
 
 # LangGraph local runtime artifacts
 .langgraph_api/
+
+# Local-only developer scripts
+/scripts/local/

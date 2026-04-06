@@ -15,7 +15,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import data_wiz_prompt
 from deep_agents.schemas import DataWizOutput
 from deep_agents.state import SectionState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
 async def data_wiz_node(state: SectionState, config: RunnableConfig) -> dict:
@@ -28,6 +28,7 @@ async def data_wiz_node(state: SectionState, config: RunnableConfig) -> dict:
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(DataWizOutput)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -42,11 +43,24 @@ async def data_wiz_node(state: SectionState, config: RunnableConfig) -> dict:
         section_title=section_title,
         search_results=json.dumps(search_results, ensure_ascii=False),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     output: DataWizOutput = await model.ainvoke([HumanMessage(content=prompt_text)])
 
+    def _dump_items(items: list) -> list[dict]:
+        dumped: list[dict] = []
+        for item in items:
+            if isinstance(item, dict):
+                dumped.append(item)
+                continue
+            if hasattr(item, "model_dump"):
+                dumped.append(item.model_dump())
+                continue
+            raise TypeError(f"Unsupported data_wiz output item type: {type(item)!r}")
+        return dumped
+
     return {
-        "section_data_points": output.section_data_points,
-        "section_charts": output.section_charts,
-        "section_time_series": output.section_time_series,
+        "section_data_points": _dump_items(output.section_data_points),
+        "section_charts": _dump_items(output.section_charts),
+        "section_time_series": _dump_items(output.section_time_series),
     }

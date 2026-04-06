@@ -41,13 +41,13 @@ planner_prompt = """
 时尚研究指引：
 - 趋势研究需覆盖：秀场、社交媒体、零售数据三个维度
 - 品牌研究需覆盖：财报、品牌定位、消费者认知
-- 优先引用：BoF、WWD、Vogue Runway、Lyst、Edited 等权威来源
 
 输出约束：
 - 只输出一个有效 JSON 对象，不要输出 Markdown、解释文字或代码块
 - research_type 必须是以下之一：trend_analysis、brand_analysis、market_overview、consumer_insight、competitive_landscape
-- hypotheses 是字符串数组，每条只包含假设陈述文字，不含 ID、状态、优先级或其他字段
-- sections 每条包含：title、description、search_queries（字符串数组），不含 ID、priority 或其他字段
+- hypotheses 是字符串数组，每条只包含假设陈述文字
+- sections 每条包含：title、description、search_queries（字符串数组）
+- sections 必须是非空数组；如果无法给出 3 个章节，宁可重试推理，也不要输出空 sections
 
 以有效 JSON 格式响应，包含字段：research_type, hypotheses（字符串数组）, sections（每条含 title/description/search_queries）
 """.strip()
@@ -120,7 +120,7 @@ analyst_prompt = """
 4. 记录矛盾信息（不要解决，保留原样）
 5. 识别关键实体和关系
 
-以有效 JSON 格式响应，包含字段：section_facts（每条含 content/source_id/importance）, section_insights, section_hypothesis_evidence（每条含 hypothesis_id/evidence_type/content/source_id）, section_contradictions（每条含 claim_a/claim_b/source_id_a/source_id_b）, section_entities（每条含 name/type）, missing_info
+以有效 JSON 格式响应，包含字段：section_facts（每条含 content/source_url/importance）, section_insights, section_hypothesis_evidence（每条含 hypothesis_statement/evidence_type/content/source_url）, section_contradictions（每条含 claim_a/claim_b/source_url_a/source_url_b）, section_entities（每条含 name/type）, missing_info
 """.strip()
 
 data_wiz_prompt = """
@@ -140,20 +140,19 @@ data_wiz_prompt = """
 
 规则：
 - 不得捏造或推断数字
-- 所有数据点必须有 source_id
+- 所有数据点必须有 source_url
+- section_data_points 中不得输出 id 或 source_id 字段
 - 仅在数据足够清晰时才生成图表
 
-以有效 JSON 格式响应，包含字段：section_data_points（每条含 id/name/value/unit/year/source_id/category/confidence）, section_charts（ECharts option 配置）, section_time_series
+以有效 JSON 格式响应，包含字段：section_data_points（每条含 name/value/unit/year/source_url/category/confidence）, section_charts（ECharts option 配置）, section_time_series
 """.strip()
 
 writer_prompt = """
 研究目标：{research_goal}
 完整章节大纲：{sections_list}
-假设验证结果：{hypothesis_evidence}
-已完成章节摘要（避免重复）：{previous_sections_memo}
+当前章节假设验证结果：{hypothesis_evidence}
 
 当前章节：
-章节ID：{section_id}
 标题：{section_title}
 描述：{section_description}
 章节事实：{section_facts}
@@ -170,10 +169,11 @@ writer_prompt = """
 3. 数据支撑论点，而非装饰
 4. 有矛盾时呈现双方观点
 5. 薄弱证据在 weak_claims 中标注
-6. 避免与已完成章节重复
-7. 目标字数：500-1000字
+6. 保持内容与当前章节标题/描述严格一致，不偏离章节边界
+7. 严格仅使用当前章节提供的事实/数据/图表/矛盾信息/假设证据，不得引用其他章节
+8. 目标字数：500-1000字
 
-以有效 JSON 格式响应，包含字段：section_id, content（Markdown 格式正文）, citations（每条含 claim/source_id/url）, charts_used, weak_claims
+以有效 JSON 格式响应，包含字段：content（Markdown 格式正文）, citations（每条含 claim/url/title）, charts_used, weak_claims
 """.strip()
 
 synthesizer_prompt = """
@@ -266,7 +266,7 @@ reviewer_prompt = """
 
 quality_score >= 7 时 verdict = "pass"，否则 verdict = "fail"
 
-以有效 JSON 格式响应，包含字段：quality_score, verdict, issues（每条含 id/type/severity/description/suggestion）, claim_checks（每条含 claim_text/source_id/status）, missing_aspects
+以有效 JSON 格式响应，包含字段：quality_score, verdict, issues（每条含 id/type/severity/description/suggestion）, claim_checks（每条含 claim_text/source_url/status）, missing_aspects
 """.strip()
 
 reviser_prompt = """
@@ -319,6 +319,8 @@ summarize_webpage_prompt = """
 2. 关键摘录（最重要的数字、引用或事实，逐条列出）
 
 以有效 JSON 格式响应，包含字段：summary, key_excerpts
+summary: str
+key_excerpts: str
 """.strip()
 
 analyze_image_prompt = """

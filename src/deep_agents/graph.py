@@ -1,6 +1,5 @@
 """LangGraph builder: main research graph + section subgraph."""
 import asyncio
-import logging
 from typing import Literal
 
 from langchain_core.runnables import RunnableConfig
@@ -8,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
-from deep_agents.state import ResearchState, SectionState
+from deep_agents.state import ResearchInputState, ResearchState, SectionState
 
 from deep_agents.agents.clarify import clarify_node
 from deep_agents.agents.planner import planner_node
@@ -23,8 +22,6 @@ from deep_agents.agents.reviewer import reviewer_node
 from deep_agents.agents.reviser import reviser_node
 from deep_agents.agents.final_check import final_check_node
 
-logger = logging.getLogger(__name__)
-
 _section_subgraph = None
 
 
@@ -35,10 +32,24 @@ def _get_section_subgraph():
     return _section_subgraph
 
 
+def _tag_section_records(records: list[dict], section_id: str) -> list[dict]:
+    """Attach section_id to every section-level record before global merge."""
+    tagged: list[dict] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        tagged.append({**record, "section_id": section_id})
+    return tagged
+
+
 async def section_pipeline_node(
     state: ResearchState, config: RunnableConfig
 ) -> Command[Literal["lead_writer", "outline_reviser"]]:
     """Fan out to all section subgraphs concurrently; merge results; route via Command."""
+    sections = state.get("sections", [])
+    if not sections:
+        raise ValueError("Planner produced no sections")
+
     sg = _get_section_subgraph()
 
     section_inputs = [
@@ -62,13 +73,56 @@ async def section_pipeline_node(
             "section_time_series": [],
             "section_sources": [],
         }
-        for s in state.get("sections", [])
+        for s in sections
     ]
 
-    raw = await asyncio.gather(
-        *[sg.ainvoke(inp, config) for inp in section_inputs],
-        return_exceptions=True,
-    )
+    async def _run_section(index: int, section_input: dict) -> tuple[int, dict]:
+        return index, await sg.ainvoke(section_input, config)
+
+    tasks = [
+        asyncio.create_task(_run_section(index, section_input))
+        for index, section_input in enumerate(section_inputs)
+    ]
+    raw: list[dict | None] = [None] * len(section_inputs)
+    pending = set(tasks)
+    try:
+        while pending:
+            done, pending = await asyncio.wait(
+                pending,
+                return_when=asyncio.FIRST_EXCEPTION,
+            )
+
+            first_error: Exception | None = None
+            for task in done:
+                exc = task.exception()
+                if exc is not None:
+                    if first_error is None:
+                        first_error = exc
+                    continue
+
+                index, section_result = task.result()
+                raw[index] = section_result
+
+            if first_error is not None:
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                raise first_error
+    except asyncio.CancelledError as cancel_exc:
+        for task in tasks:
+            if task.done():
+                continue
+            task.cancel()
+        if tasks:
+            current_task = asyncio.current_task()
+            if current_task is not None and hasattr(current_task, "uncancel"):
+                current_task.uncancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        raise cancel_exc
+
+    if any(result is None for result in raw):
+        raise RuntimeError("Section subgraph returned no result")
 
     merged: dict = {
         "facts": [],
@@ -79,26 +133,98 @@ async def section_pipeline_node(
         "contradictions": [],
         "sources": [],
         "open_questions": [],
-        "failed_sections": [],
     }
 
-    for s, r in zip(state.get("sections", []), raw):
-        if isinstance(r, Exception):
-            logger.warning("Section %s failed: %s", s["id"], r)
-            merged["failed_sections"].append(s["id"])
-            continue
-        merged["facts"].extend(r.get("section_facts", []))
-        merged["data_points"].extend(r.get("section_data_points", []))
-        merged["hypothesis_evidence"].extend(r.get("section_hypothesis_evidence", []))
-        merged["charts"].extend(r.get("section_charts", []))
+    for s, r in zip(sections, raw):
+        if r is None:
+            raise RuntimeError("Section subgraph returned no result")
+        section_id = s["id"]
+        source_urls: set[str] = set()
+        legacy_keys = {"source_id", "source_id_a", "source_id_b", "hypothesis_id", "id"}
+        section_sources = r.get("section_sources", [])
+        for src in section_sources:
+            if not isinstance(src, dict):
+                continue
+            source_url = src.get("url")
+            if not isinstance(source_url, str) or not source_url.strip():
+                raise ValueError(f"Missing required url in section_sources for section '{section_id}'")
+            source_url = source_url.strip()
+            source_urls.add(source_url)
+            cleaned_src = {
+                key: value for key, value in src.items() if key not in legacy_keys
+            }
+            merged["sources"].append(
+                {
+                    **cleaned_src,
+                    "url": source_url,
+                    "section_id": section_id,
+                }
+            )
+
+        def _map_source_refs(record: dict, required_url_fields: tuple[str, ...] = ()) -> dict:
+            mapped = {**record, "section_id": section_id}
+
+            for field_name in required_url_fields:
+                source_url = mapped.get(field_name)
+                if not isinstance(source_url, str) or not source_url.strip():
+                    raise ValueError(
+                        f"Missing required {field_name} in section '{section_id}'"
+                    )
+                source_url = source_url.strip()
+                if source_url not in source_urls:
+                    raise ValueError(
+                        f"Unresolved {field_name} '{source_url}' in section '{section_id}'"
+                    )
+                mapped[field_name] = source_url
+
+            for optional_field in ("source_url", "source_url_a", "source_url_b"):
+                if optional_field in required_url_fields:
+                    continue
+                source_url = mapped.get(optional_field)
+                if source_url is None:
+                    continue
+                if not isinstance(source_url, str) or not source_url.strip():
+                    raise ValueError(
+                        f"Invalid {optional_field} in section '{section_id}'"
+                    )
+                source_url = source_url.strip()
+                if source_url not in source_urls:
+                    raise ValueError(
+                        f"Unresolved {optional_field} '{source_url}' in section '{section_id}'"
+                    )
+                mapped[optional_field] = source_url
+
+            return {
+                key: value for key, value in mapped.items() if key not in legacy_keys
+            }
+
+        merged["facts"].extend(
+            _map_source_refs(item, required_url_fields=("source_url",))
+            for item in r.get("section_facts", [])
+            if isinstance(item, dict)
+        )
+        merged["data_points"].extend(
+            _map_source_refs(item, required_url_fields=("source_url",))
+            for item in r.get("section_data_points", [])
+            if isinstance(item, dict)
+        )
+        merged["hypothesis_evidence"].extend(
+            _map_source_refs(item, required_url_fields=("source_url",))
+            for item in r.get("section_hypothesis_evidence", [])
+            if isinstance(item, dict)
+        )
+        merged["charts"].extend(_tag_section_records(r.get("section_charts", []), section_id))
         merged["insights"].extend(
-            {"section_id": s["id"], "insight": i}
+            {"section_id": section_id, "insight": i}
             for i in r.get("section_insights", [])
         )
-        merged["contradictions"].extend(r.get("section_contradictions", []))
-        merged["sources"].extend(r.get("section_sources", []))
+        merged["contradictions"].extend(
+            _map_source_refs(item, required_url_fields=("source_url_a", "source_url_b"))
+            for item in r.get("section_contradictions", [])
+            if isinstance(item, dict)
+        )
         merged["open_questions"].extend(
-            {"section_id": s["id"], "question": q} for q in r.get("missing_info", [])
+            {"section_id": section_id, "question": q} for q in r.get("missing_info", [])
         )
 
     refuted = sum(
@@ -110,7 +236,19 @@ async def section_pipeline_node(
         else "lead_writer"
     )
 
-    return Command(goto=next_node, update=merged)
+    return Command(
+        goto=next_node,
+        update={
+            "facts": {"type": "override", "value": merged["facts"]},
+            "data_points": {"type": "override", "value": merged["data_points"]},
+            "hypothesis_evidence": {"type": "override", "value": merged["hypothesis_evidence"]},
+            "charts": {"type": "override", "value": merged["charts"]},
+            "insights": {"type": "override", "value": merged["insights"]},
+            "contradictions": {"type": "override", "value": merged["contradictions"]},
+            "sources": {"type": "override", "value": merged["sources"]},
+            "open_questions": {"type": "override", "value": merged["open_questions"]},
+        },
+    )
 
 
 def build_section_subgraph():
@@ -126,7 +264,7 @@ def build_section_subgraph():
 
 
 def build_research_graph():
-    graph = StateGraph(ResearchState)
+    graph = StateGraph(ResearchState, input_schema=ResearchInputState)
 
     graph.add_node("clarify", clarify_node)
     graph.add_node("planner", planner_node)

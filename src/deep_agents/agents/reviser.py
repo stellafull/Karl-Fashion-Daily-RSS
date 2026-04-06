@@ -10,7 +10,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import reviser_prompt
 from deep_agents.schemas import ReviserOutput
 from deep_agents.state import ResearchState
-from deep_agents.utils import get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model
 
 
 async def reviser_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -22,6 +22,7 @@ async def reviser_node(state: ResearchState, config: RunnableConfig) -> dict:
             max_tokens=configurable.final_report_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            disable_streaming=True,
         )
         .with_structured_output(ReviserOutput)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
@@ -31,6 +32,7 @@ async def reviser_node(state: ResearchState, config: RunnableConfig) -> dict:
         full_report=state.get("full_report", ""),
         review_result=json.dumps(state.get("review_result", {}), ensure_ascii=False, indent=2),
     )
+    prompt_text = _strip_ctrl(prompt_text)
 
     result: ReviserOutput = await model.ainvoke([HumanMessage(content=prompt_text)])
 

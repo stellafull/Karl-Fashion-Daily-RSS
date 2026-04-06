@@ -3,9 +3,10 @@
 import os
 from enum import Enum
 from typing import Any, List, Optional
+from urllib.parse import urlparse
 
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class SearchAPI(Enum):
     """Enumeration of available search API providers."""
@@ -58,9 +59,12 @@ class Configuration(BaseModel):
     max_react_tool_calls: int = Field(
         default=10,
     )
+    tavily_timeout: int = Field(
+        default=120,
+    )
     # Model Configuration
     summarization_model: str = Field(
-        default="openai:qwen3.5-flash",
+        default="openai:qwen3.6-plus",
     )
     summarization_model_max_tokens: int = Field(
         default=8192,
@@ -75,7 +79,7 @@ class Configuration(BaseModel):
         default=10000,
     )
     compression_model: str = Field(
-        default="openai:qwen3.5-flash",
+        default="openai:qwen3.6-plus",
     )
     compression_model_max_tokens: int = Field(
         default=8192,
@@ -97,8 +101,31 @@ class Configuration(BaseModel):
     )
     # openai compatible endpoint base url
     openai_compatible_base_url: Optional[str] = Field(
-    default="https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+    @field_validator("openai_compatible_base_url")
+    @classmethod
+    def validate_openai_compatible_base_url(
+        cls, value: Optional[str]
+    ) -> Optional[str]:
+        """Require a provider base URL, not a request endpoint URL."""
+        if value is None:
+            return value
+
+        parsed = urlparse(value)
+        path = parsed.path.rstrip("/")
+        request_endpoints = (
+            "/chat/completions",
+            "/completions",
+            "/responses",
+        )
+        if any(path.endswith(endpoint) for endpoint in request_endpoints):
+            raise ValueError(
+                "openai_compatible_base_url must be a provider base URL, "
+                "not a request endpoint URL."
+            )
+        return value
 
 
     @classmethod

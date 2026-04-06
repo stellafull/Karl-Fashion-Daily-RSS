@@ -53,8 +53,19 @@ async def research(request: ResearchRequest):
         final_result = None
 
         try:
-            async for chunk in graph.astream(input_state, config=config, stream_mode="updates"):
-                for node_name, state_update in chunk.items():
+            async for chunk in graph.astream(input_state, config=config, stream_mode=["updates", "custom"]):
+                mode, data = chunk
+
+                if mode == "custom":
+                    # Per-section events emitted by writer_node via get_stream_writer()
+                    if isinstance(data, dict) and data.get("type") == "section_done":
+                        section_id = data.get("section_id")
+                        if isinstance(section_id, str) and section_id:
+                            yield f"data: {json.dumps({'type': 'section_done', 'section_id': section_id})}\n\n"
+                    continue
+
+                # mode == "updates": data is {node_name: state_update}
+                for node_name, state_update in data.items():
                     if node_name not in NODE_NAMES:
                         continue
                     if not isinstance(state_update, dict):
