@@ -1,11 +1,4 @@
-"""DeepScout node — explicit tool-calling loop for section-level evidence collection.
-
-Runs a researcher -> researcher_tools loop: the LLM calls search tools and reflects
-until it calls ResearchComplete or hits max_deep_scout_iterations.
-
-After each tavily_search call the raw results are compressed (like open_deep_research's
-compress_research) before being fed back to the LLM and stored for downstream nodes.
-"""
+"""DeepScout node — explicit tool loop with one final compressed research artifact."""
 import json
 import logging
 
@@ -13,7 +6,6 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from deep_agents.agents.compress_search import compress_search
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import deep_scout_prompt
 from deep_agents.state import SectionState
@@ -29,9 +21,95 @@ logger = logging.getLogger(__name__)
 _RESEARCH_COMPLETE_TOOL_NAME = "ResearchComplete"
 _THINK_TOOL_NAME = "think_tool"
 
+_COMPRESS_RESEARCH_PROMPT = """
+今天的日期是 {date}。
+研究目标：{research_goal}
+当前章节：{section_title} — {section_description}
+待验证假设：
+{hypotheses}
+
+以下是 deep_scout 本地工具循环收集的原始研究素材：
+
+{raw_research_material}
+
+你是研究信息压缩专家。请将上述研究素材压缩为一份供下游节点使用的最终章节研究摘要。
+
+压缩原则：
+1. 保留所有 URL，格式优先为 [标题](URL)
+2. 保留精确数据：数字、百分比、金额、日期不得改写
+3. 保留相互矛盾的信息，不要强行统一
+4. 优先保留支持或反驳假设的关键证据
+5. 删除与当前章节无关或重复冗余的内容
+
+输出规则：
+- 直接输出压缩后的 Markdown 文本
+- 不要输出 JSON
+- 不要输出代码块
+- 不要输出解释、前言或总结
+""".strip()
+
+
+def _message_content_to_text(content: object) -> str:
+    """Normalize provider/tool payloads into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+            else:
+                parts.append(json.dumps(item, ensure_ascii=False))
+        return "\n".join(parts)
+    return json.dumps(content, ensure_ascii=False)
+
+
+def _format_research_material(tool_name: str, content: str) -> str:
+    """Label evidence-bearing tool output before final compression."""
+    return f"## {tool_name}\n{content.strip()}"
+
+
+async def _compress_section_research(
+    *,
+    raw_research_material: str,
+    research_goal: str,
+    section_title: str,
+    section_description: str,
+    hypotheses: list[str],
+    config: RunnableConfig,
+) -> str:
+    """Compress the full local research transcript once after the tool loop."""
+    if not raw_research_material.strip():
+        return ""
+
+    configurable = Configuration.from_runnable_config(config)
+    model = init_chat_model(
+        model=configurable.compression_model,
+        max_tokens=configurable.compression_model_max_tokens,
+        api_key=get_api_key_for_model(configurable.compression_model, config),
+        base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
+        disable_streaming=True,
+    )
+
+    prompt_text = _COMPRESS_RESEARCH_PROMPT.format(
+        date=get_today_str(),
+        research_goal=research_goal,
+        section_title=section_title,
+        section_description=section_description,
+        hypotheses=json.dumps(hypotheses, ensure_ascii=False),
+        raw_research_material=raw_research_material,
+    )
+    prompt_text = _strip_ctrl(prompt_text)
+
+    response = await model.ainvoke([HumanMessage(content=prompt_text)])
+    return _message_content_to_text(response.content)
+
 
 async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
-    """Run an explicit researcher loop to collect evidence for a single research section."""
+    """Run a local tool loop and emit one final compressed section artifact."""
     configurable = Configuration.from_runnable_config(config)
     tools = await get_all_tools(config)
 
@@ -69,7 +147,7 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
         HumanMessage(content="请开始研究当前章节，收集足够的证据。"),
     ]
 
-    search_results: list[str] = []
+    research_materials: list[str] = []
 
     for _ in range(configurable.max_deep_scout_iterations):
         response: AIMessage = await bound_model.ainvoke(messages)
@@ -100,41 +178,17 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
 
             try:
                 raw_result = await tool.ainvoke(tc, config=config)
-
-                # tool.ainvoke with a ToolCall dict returns a ToolMessage,
-                # not the raw string.  Extract .content so downstream
-                # processing and json.dumps don't choke.
                 if isinstance(raw_result, ToolMessage):
                     content = raw_result.content
-                elif isinstance(raw_result, str):
-                    content = raw_result
                 else:
-                    content = json.dumps(raw_result, ensure_ascii=False)
+                    content = raw_result
 
-                if not isinstance(content, str):
-                    content = json.dumps(content, ensure_ascii=False)
+                content = _strip_ctrl(_message_content_to_text(content))
 
-                # Compress search/image results before feeding to LLM.
-                # think_tool reflections are internal — skip compression.
-                if tc["name"] != _THINK_TOOL_NAME and content:
-                    try:
-                        compressed = await compress_search(
-                            raw_content=content,
-                            research_goal=research_goal,
-                            section_title=section_title,
-                            section_description=section_description,
-                            hypotheses=hypotheses,
-                            config=config,
-                        )
-                        search_results.append(compressed)
-                        content = compressed  # LLM sees compressed version
-                    except Exception as compress_exc:
-                        logger.warning(
-                            "Compression failed for %s, using raw content: %s",
-                            tc["name"],
-                            compress_exc,
-                        )
-                        search_results.append(content)
+                if tc["name"] != _THINK_TOOL_NAME and content.strip():
+                    research_materials.append(
+                        _format_research_material(tc["name"], content)
+                    )
 
                 tool_messages.append(
                     ToolMessage(
@@ -158,4 +212,24 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
         if done:
             break
 
-    return {"search_results": search_results}
+    raw_section_research = "\n\n".join(research_materials)
+    if not raw_section_research:
+        return {"section_research": ""}
+
+    try:
+        section_research = await _compress_section_research(
+            raw_research_material=raw_section_research,
+            research_goal=research_goal,
+            section_title=section_title,
+            section_description=section_description,
+            hypotheses=hypotheses,
+            config=config,
+        )
+    except Exception as compress_exc:
+        logger.warning(
+            "Final research compression failed, using raw transcript: %s",
+            compress_exc,
+        )
+        section_research = raw_section_research
+
+    return {"section_research": section_research}
