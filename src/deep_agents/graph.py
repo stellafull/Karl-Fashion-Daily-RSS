@@ -50,7 +50,7 @@ def _get_section_subgraph():
 def build_section_subgraph():
     """deep_scout → analyst → data_wiz
 
-    Compression now happens inside deep_scout's tool loop (per tavily call),
+    Compression now happens once at the end of deep_scout's local tool loop,
     not as a separate graph node.
     """
     graph = StateGraph(SectionState)
@@ -135,7 +135,7 @@ async def section_worker(state: dict, config: RunnableConfig) -> dict:
         "research_goal": state["research_goal"],
         "hypotheses": state.get("hypotheses", []),
         "language": state.get("language", "zh"),
-        "search_results": [],
+        "section_research": "",
         "section_facts": [],
         "section_insights": [],
         "section_hypothesis_evidence": [],

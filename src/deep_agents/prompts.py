@@ -206,10 +206,10 @@ analyst_prompt = (
 待验证假设：
 {hypotheses}
 
-搜索结果：
-{search_results}
+压缩研究素材：
+{section_research}
 
-你是时尚行业研究分析师。请对上述搜索结果进行定性分析。
+你是时尚行业研究分析师。请对上述压缩研究素材进行定性分析。
 
 任务：
 1. 识别叙事主题和模式
@@ -262,10 +262,10 @@ data_wiz_prompt = (
 研究目标：{research_goal}
 章节：{section_title}
 
-搜索结果（含数据）：
-{search_results}
+压缩研究素材（含数据）：
+{section_research}
 
-你是时尚行业数据分析师。请从搜索结果中提取定量数据。
+你是时尚行业数据分析师。请从压缩研究素材中提取定量数据。
 
 任务：
 1. 提取可量化的数据点（仅提取有明确来源的数字）
@@ -567,18 +567,18 @@ final_check_prompt = (
 """
 ).strip()
 
-compress_search_prompt = """
+compress_research_prompt = """
 今天的日期是 {date}。
 研究目标：{research_goal}
 当前章节：{section_title} — {section_description}
 待验证假设：
 {hypotheses}
 
-以下是通过多次搜索收集的原始结果：
+以下是 deep_scout 本地工具循环收集的原始研究素材：
 
-{raw_search_results}
+{raw_research_material}
 
-你是研究信息压缩专家。请将上述搜索结果压缩为一份精炼的研究素材摘要。
+你是研究信息压缩专家。请将上述研究素材压缩为一份供下游节点使用的最终章节研究摘要。
 
 压缩原则：
 1. **保留所有 URL**：每条信息必须保留其来源 URL，格式为 [标题](URL)
