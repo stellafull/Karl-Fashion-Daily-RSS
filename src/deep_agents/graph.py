@@ -50,8 +50,8 @@ def _get_section_subgraph():
 def build_section_subgraph():
     """deep_scout → analyst → data_wiz
 
-    Compression now happens once at the end of deep_scout's local tool loop,
-    not as a separate graph node.
+    deep_scout keeps its tool transcript local and emits one final compressed
+    section_research artifact for downstream consumers.
     """
     graph = StateGraph(SectionState)
     graph.add_node("deep_scout", deep_scout_node)

@@ -1,4 +1,10 @@
-"""Analyst node — qualitative analysis of final section research text."""
+"""Analyst node — qualitative analysis of final section research for a section.
+
+Reads section_research, hypotheses, section_title, section_description, and
+research_goal from SectionState, calls the LLM with structured output to
+produce an AnalystOutput, then returns the relevant state fields as plain
+dicts/lists.
+"""
 
 import json
 
@@ -14,7 +20,7 @@ from deep_agents.utils import _strip_ctrl, get_api_key_for_model, STRUCTURED_OUT
 
 
 async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
-    """Perform qualitative analysis of the compressed section research artifact."""
+    """Perform qualitative analysis of the section's compressed research artifact."""
     configurable = Configuration.from_runnable_config(config)
 
     model = (
@@ -45,7 +51,7 @@ async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
         section_title=section_title,
         section_description=section_description,
         hypotheses=json.dumps(hypotheses, ensure_ascii=False),
-        section_research=section_research or "（无研究素材）",
+        section_research=section_research or "（无章节研究素材）",
     )
     prompt_text = _strip_ctrl(prompt_text)
 

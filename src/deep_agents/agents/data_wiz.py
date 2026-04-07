@@ -1,4 +1,9 @@
-"""DataWiz node — quantitative extraction from final section research text."""
+"""DataWiz node — quantitative data extraction from final section research.
+
+Reads section_research, section_title, and research_goal from SectionState,
+calls the LLM with structured output to produce a DataWizOutput, then returns
+the relevant state fields as plain dicts/lists.
+"""
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
@@ -12,7 +17,7 @@ from deep_agents.utils import _strip_ctrl, get_api_key_for_model, STRUCTURED_OUT
 
 
 async def data_wiz_node(state: SectionState, config: RunnableConfig) -> dict:
-    """Extract quantitative data points and chart configs from section research."""
+    """Extract data points and chart configurations from compressed section research."""
     configurable = Configuration.from_runnable_config(config)
 
     model = (
@@ -39,7 +44,7 @@ async def data_wiz_node(state: SectionState, config: RunnableConfig) -> dict:
     prompt_text = data_wiz_prompt.format(
         research_goal=research_goal,
         section_title=section_title,
-        section_research=section_research or "（无研究素材）",
+        section_research=section_research or "（无章节研究素材）",
     )
     prompt_text = _strip_ctrl(prompt_text)
 
