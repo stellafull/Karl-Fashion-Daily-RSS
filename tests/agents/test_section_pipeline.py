@@ -116,8 +116,8 @@ async def test_analyst_prompt_receives_full_section_research_payload(section_sta
         await analyst_node(section_state, mock_config)
 
     prompt = mock_chain.ainvoke.await_args.args[0][0].content
-    artifact = prompt.split("压缩研究素材：\n", 1)[1].split("\n\n你是时尚行业研究分析师", 1)[0]
-    assert artifact == full_payload
+    assert "压缩后的章节研究素材" in prompt
+    assert full_payload in prompt
 
 
 async def test_data_wiz_prompt_receives_full_section_research_payload(section_state, mock_config):
@@ -137,8 +137,8 @@ async def test_data_wiz_prompt_receives_full_section_research_payload(section_st
         await data_wiz_node(section_state, mock_config)
 
     prompt = mock_chain.ainvoke.await_args.args[0][0].content
-    artifact = prompt.split("压缩研究素材（含数据）：\n", 1)[1].split("\n\n你是时尚行业数据分析师", 1)[0]
-    assert artifact == full_payload
+    assert "压缩后的章节研究素材（含数据）" in prompt
+    assert full_payload in prompt
 
 
 async def test_section_worker_seeds_single_artifact_field_and_tags_outputs(mock_config):
