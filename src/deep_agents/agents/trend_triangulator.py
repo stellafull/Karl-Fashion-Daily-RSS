@@ -16,16 +16,16 @@ async def trend_triangulator_node(state: ResearchState, config: RunnableConfig) 
     """Only runs for trend_analysis research_type. Validates trend claims via 3 signals."""
     configurable = Configuration.from_runnable_config(config)
     model = init_chat_model(
-        model=configurable.research_model,
+        model=configurable.final_report_model,
         max_tokens=configurable.final_report_model_max_tokens,
-        api_key=get_api_key_for_model(configurable.research_model, config),
+        api_key=get_api_key_for_model(configurable.final_report_model, config),
         base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
     )
 
     prompt_text = trend_triangulator_prompt.format(
         full_report=state.get("full_report", ""),
         facts=json.dumps(state.get("facts", [])[:30], ensure_ascii=False),
-        sources=json.dumps(state.get("sources", [])[:30], ensure_ascii=False),
     )
     prompt_text = _strip_ctrl(prompt_text)
 

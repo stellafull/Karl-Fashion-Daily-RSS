@@ -12,7 +12,6 @@ async def test_writer_produces_section_drafts(sample_state, mock_config):
 
     mock_draft = SectionDraft(
         content="## 市场概况\n\n2025年中国奢侈品市场规模达3620亿元...",
-        citations=[{"claim": "规模达3620亿元", "url": "https://example.com", "title": "Example Source"}],
         charts_used=[],
         weak_claims=[],
     )
@@ -20,7 +19,7 @@ async def test_writer_produces_section_drafts(sample_state, mock_config):
     mock_chained.ainvoke = AsyncMock(return_value=mock_draft)
 
     sample_state["facts"] = [
-        {"content": "市场规模3620亿元", "source_url": "https://example.com/source-1", "section_id": "sec_1"}
+        {"content": "市场规模3620亿元", "section_id": "sec_1"}
     ]
 
     with patch("deep_agents.agents.writer.init_chat_model") as mock_init:
@@ -44,7 +43,7 @@ async def test_synthesizer_produces_full_report(sample_state, mock_config):
     mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
     sample_state["section_drafts"] = [
-        {"section_id": "sec_1", "content": "## 市场概况\n\n内容...", "citations": [], "charts_used": [], "weak_claims": []}
+        {"section_id": "sec_1", "content": "## 市场概况\n\n内容...", "charts_used": [], "weak_claims": []}
     ]
 
     with patch("deep_agents.agents.synthesizer.init_chat_model") as mock_init:
@@ -85,14 +84,14 @@ async def test_writer_prompt_inputs_are_strictly_section_local(mock_config):
             {"id": "sec_2", "title": "章节2", "description": "描述2", "search_queries": ["q2"], "priority": 2},
         ],
         "facts": [
-            {"content": "fact-sec-1", "source_url": "https://example.com/src-1", "section_id": "sec_1"},
-            {"content": "fact-sec-2", "source_url": "https://example.com/src-2", "section_id": "sec_2"},
-            {"content": "fact-without-section", "source_url": "https://example.com/src-3"},
+            {"content": "fact-sec-1", "section_id": "sec_1"},
+            {"content": "fact-sec-2", "section_id": "sec_2"},
+            {"content": "fact-without-section"},
         ],
         "data_points": [
-            {"name": "dp-sec-1", "value": 1, "source_url": "https://example.com/dp-1", "section_id": "sec_1"},
-            {"name": "dp-sec-2", "value": 2, "source_url": "https://example.com/dp-2", "section_id": "sec_2"},
-            {"name": "dp-without-section", "value": 3, "source_url": "https://example.com/dp-3"},
+            {"name": "dp-sec-1", "value": 1, "section_id": "sec_1"},
+            {"name": "dp-sec-2", "value": 2, "section_id": "sec_2"},
+            {"name": "dp-without-section", "value": 3},
         ],
         "charts": [
             {"id": "chart-sec-1", "section_id": "sec_1"},
@@ -103,22 +102,16 @@ async def test_writer_prompt_inputs_are_strictly_section_local(mock_config):
             {
                 "claim_a": "contra-a-sec-1",
                 "claim_b": "contra-b-sec-1",
-                "source_url_a": "https://example.com/ca-1",
-                "source_url_b": "https://example.com/cb-1",
                 "section_id": "sec_1",
             },
             {
                 "claim_a": "contra-a-sec-2",
                 "claim_b": "contra-b-sec-2",
-                "source_url_a": "https://example.com/ca-2",
-                "source_url_b": "https://example.com/cb-2",
                 "section_id": "sec_2",
             },
             {
                 "claim_a": "contra-a-no-sec",
                 "claim_b": "contra-b-no-sec",
-                "source_url_a": "https://example.com/ca-3",
-                "source_url_b": "https://example.com/cb-3",
             },
         ],
         "hypothesis_evidence": [
@@ -126,28 +119,25 @@ async def test_writer_prompt_inputs_are_strictly_section_local(mock_config):
                 "hypothesis_statement": "h-sec-1",
                 "evidence_type": "supports",
                 "content": "e-sec-1",
-                "source_url": "https://example.com/h-1",
                 "section_id": "sec_1",
             },
             {
                 "hypothesis_statement": "h-sec-2",
                 "evidence_type": "refutes",
                 "content": "e-sec-2",
-                "source_url": "https://example.com/h-2",
                 "section_id": "sec_2",
             },
             {
                 "hypothesis_statement": "h-no-sec",
                 "evidence_type": "inconclusive",
                 "content": "e-no-sec",
-                "source_url": "https://example.com/h-3",
             },
         ],
     }
 
     mock_drafts = [
-        SectionDraft(content="c1", citations=[], charts_used=[], weak_claims=[]),
-        SectionDraft(content="c2", citations=[], charts_used=[], weak_claims=[]),
+        SectionDraft(content="c1", charts_used=[], weak_claims=[]),
+        SectionDraft(content="c2", charts_used=[], weak_claims=[]),
     ]
     mock_chain = MagicMock()
     mock_chain.ainvoke = AsyncMock(side_effect=mock_drafts)
@@ -215,8 +205,8 @@ async def test_writer_sections_list_excludes_runtime_ids_from_prompt(mock_config
     mock_chain = MagicMock()
     mock_chain.ainvoke = AsyncMock(
         side_effect=[
-            SectionDraft(content="c1", citations=[], charts_used=[], weak_claims=[]),
-            SectionDraft(content="c2", citations=[], charts_used=[], weak_claims=[]),
+                SectionDraft(content="c1", charts_used=[], weak_claims=[]),
+                SectionDraft(content="c2", charts_used=[], weak_claims=[]),
         ]
     )
 
@@ -278,7 +268,7 @@ async def test_writer_writes_sections_in_parallel_with_synchronization(mock_conf
 
         await release_all.wait()
         active_calls -= 1
-        return SectionDraft(content=f"draft-{section_id}", citations=[], charts_used=[], weak_claims=[])
+        return SectionDraft(content=f"draft-{section_id}", charts_used=[], weak_claims=[])
 
     mock_chain.ainvoke = AsyncMock(side_effect=synchronized_ainvoke)
 
@@ -344,7 +334,7 @@ async def test_writer_cancels_siblings_and_emits_no_late_section_done_on_failure
             raise
 
         second_completed.set()
-        return SectionDraft(content="draft-sec-2", citations=[], charts_used=[], weak_claims=[])
+        return SectionDraft(content="draft-sec-2", charts_used=[], weak_claims=[])
 
     mock_chain.ainvoke = AsyncMock(side_effect=failfast_ainvoke)
 
@@ -387,15 +377,14 @@ async def test_writer_rejects_empty_sections(mock_config):
 
 
 def test_analyst_prompt_uses_url_based_fields() -> None:
-    assert "content/source_url/importance" in analyst_prompt
-    assert "hypothesis_statement/evidence_type/content/source_url" in analyst_prompt
-    assert "claim_a/claim_b/source_url_a/source_url_b" in analyst_prompt
-    assert "不得输出 source_id/source_id_a/source_id_b/hypothesis_id" in analyst_prompt
+    assert "content, importance" in analyst_prompt
+    assert "hypothesis_statement, evidence_type, content" in analyst_prompt
+    assert "claim_a, claim_b" in analyst_prompt
 
 
-def test_data_wiz_prompt_uses_source_url_and_no_legacy_id_fields() -> None:
-    assert "所有数据点必须有 source_url" in data_wiz_prompt
-    assert "name/value/unit/year/source_url/category/confidence" in data_wiz_prompt
+def test_data_wiz_prompt_has_no_source_url_contract() -> None:
+    assert "source_url" not in data_wiz_prompt
+    assert "name, value, unit, year, category, confidence" in data_wiz_prompt
     assert "不得输出 id 或 source_id 字段" in data_wiz_prompt
 
 
@@ -404,5 +393,5 @@ def test_writer_prompt_citation_contract_has_no_model_facing_section_id() -> Non
     assert "包含字段：section_id" not in writer_prompt
     assert "已完成章节摘要" not in writer_prompt
     assert "完整章节大纲：{sections_list}" in writer_prompt
-    assert "citations（每条含 claim/url/title）" in writer_prompt
+    assert "citations" not in writer_prompt
     assert "source_id" not in writer_prompt

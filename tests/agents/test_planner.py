@@ -30,13 +30,8 @@ async def test_planner_node_returns_normalized_shape(mock_config):
     assert result["outline_revision_count"] == 0
     assert "budget" not in result
 
-    # Normalized hypothesis shape
-    assert len(result["hypotheses"]) == 1
-    h = result["hypotheses"][0]
-    assert h["id"] == "h_1"
-    assert h["statement"] == "X is rising"
-    assert h["status"] == "untested"
-    assert h["evidence_needed"] == []
+    # Hypotheses are plain strings
+    assert result["hypotheses"] == ["X is rising"]
 
     # Normalized section shape
     assert len(result["sections"]) == 1
@@ -70,7 +65,7 @@ async def test_planner_node_ids_increment_correctly(mock_config):
         m.return_value.with_structured_output.return_value.with_retry.return_value = mock_chain
         result = await planner_node(state, mock_config)
 
-    assert [h["id"] for h in result["hypotheses"]] == ["h_1", "h_2"]
+    assert result["hypotheses"] == ["H1", "H2"]
     assert [s["id"] for s in result["sections"]] == ["sec_1", "sec_2", "sec_3"]
     assert [s["priority"] for s in result["sections"]] == [1, 2, 3]
 

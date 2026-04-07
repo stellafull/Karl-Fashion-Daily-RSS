@@ -115,27 +115,20 @@ Prompt changes:
 
 ### Change 4: Fix `tavily_search` Output and Remove `Source` Schema
 
-Update `Summary` schema:
-```python
-class Summary(BaseModel):
-    url: str
-    title: str
-    summary: str
-    key_excerpts: str
-```
+Keep `Summary` schema as-is (`summary: str, key_excerpts: str`) — the LLM producing Summary via `with_structured_output(Summary)` doesn't know the URL/title. Instead, `tavily_search` constructs the structured JSON output by combining LLM summary with url/title from tavily search result metadata.
 
 Change `tavily_search` to return structured JSON instead of formatted markdown:
 ```python
 results_list = [
-    {"url": url, "title": r["title"], "summary": r["summary"], "key_excerpts": r["key_excerpts"]}
-    for url, r in summarized_results.items()
+    {"url": url, "title": result["title"], "summary": result["content"] if summary is None else summary}
+    for url, result, summary in zip(unique_results.keys(), unique_results.values(), summaries)
 ]
 return json.dumps(results_list, ensure_ascii=False)
 ```
 
-Remove `Source` schema from `schemas.py` — unused as a Pydantic model, replaced by updated `Summary`.
+Remove `Source` schema from `schemas.py` — unused as a Pydantic model.
 
-Simplify `_extract_results` in `deep_scout.py` — structured JSON from tavily_search is now parseable, so source extraction works correctly. `section_sources` gets properly populated.
+`_extract_results` in `deep_scout.py` already handles JSON lists with url/title/summary fields — structured JSON from tavily_search is now parseable, so source extraction works correctly. `section_sources` gets properly populated.
 
 Remove from `graph.py` `section_pipeline_node`:
 - `legacy_keys` set and stripping logic — no more legacy IDs exist

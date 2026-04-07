@@ -15,7 +15,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import analyst_prompt
 from deep_agents.schemas import AnalystOutput
 from deep_agents.state import SectionState
-from deep_agents.utils import _strip_ctrl, get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model, STRUCTURED_OUTPUT_RETRY_EXCEPTIONS
 
 
 async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
@@ -28,10 +28,15 @@ async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            max_retries=configurable.provider_max_retries,
             disable_streaming=True,
         )
         .with_structured_output(AnalystOutput)
-        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+        .with_retry(
+            retry_if_exception_type=STRUCTURED_OUTPUT_RETRY_EXCEPTIONS,
+            wait_exponential_jitter=True,
+            stop_after_attempt=configurable.max_structured_output_retries,
+        )
     )
 
     research_goal = state.get("research_goal", "")
@@ -45,7 +50,7 @@ async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
         section_title=section_title,
         section_description=section_description,
         hypotheses=json.dumps(hypotheses, ensure_ascii=False),
-        search_results=json.dumps(search_results, ensure_ascii=False),
+        search_results="\n\n".join(search_results) if search_results else "（无搜索结果）",
     )
     prompt_text = _strip_ctrl(prompt_text)
 
@@ -68,6 +73,5 @@ async def analyst_node(state: SectionState, config: RunnableConfig) -> dict:
         "section_insights": output.section_insights,
         "section_hypothesis_evidence": _dump_items(output.section_hypothesis_evidence),
         "section_contradictions": _dump_items(output.section_contradictions),
-        "section_entities": _dump_items(output.section_entities),
         "missing_info": output.missing_info,
     }

@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from deep_agents.schemas import (
     AnalystOutput,
-    Citation,
+    ClaimCheck,
     Contradiction,
     DataPoint,
     DataWizOutput,
@@ -12,6 +12,8 @@ from deep_agents.schemas import (
     PlannerSection,
     ResearchBrief,
     ResearchComplete,
+    ResolutionItem,
+    ReviewIssue,
     ReviewResult,
     RevisedOutline,
     ReviserOutput,
@@ -19,7 +21,6 @@ from deep_agents.schemas import (
     SectionDraft,
     SectionFact,
     SimplifiedPlan,
-    Source,
     Summary,
 )
 
@@ -114,7 +115,6 @@ def test_analyst_output_defaults() -> None:
     assert model.section_insights == []
     assert model.section_hypothesis_evidence == []
     assert model.section_contradictions == []
-    assert model.section_entities == []
     assert model.missing_info == []
 
 
@@ -122,7 +122,6 @@ def test_data_wiz_output_defaults() -> None:
     model = DataWizOutput()
     assert model.section_data_points == []
     assert model.section_charts == []
-    assert model.section_time_series == []
 
 
 def test_analyst_output_rejects_unexpected_top_level_fields() -> None:
@@ -135,32 +134,12 @@ def test_data_wiz_output_rejects_unexpected_top_level_fields() -> None:
         DataWizOutput(unexpected_field="x")
 
 
-def test_source_schema_requires_url_title_summary() -> None:
-    model = Source(
-        url="https://example.com/a",
-        title="Example",
-        summary="Summary text",
-    )
-    assert model.url == "https://example.com/a"
-
-
-def test_source_rejects_legacy_source_id_field() -> None:
-    with pytest.raises(ValidationError):
-        Source(
-            source_id="src_001",
-            url="https://example.com/a",
-            title="Example",
-            summary="Summary text",
-        )
-
-
-def test_section_fact_requires_source_url() -> None:
+def test_section_fact_schema() -> None:
     model = SectionFact(
         content="销量增长",
-        source_url="https://example.com/a",
         importance="high",
     )
-    assert model.source_url == "https://example.com/a"
+    assert model.content == "销量增长"
 
 
 def test_hypothesis_evidence_uses_statement_not_id() -> None:
@@ -168,67 +147,30 @@ def test_hypothesis_evidence_uses_statement_not_id() -> None:
         hypothesis_statement="消费者偏好转向功能性服饰",
         evidence_type="supports",
         content="多个来源提到功能性需求增强",
-        source_url="https://example.com/b",
     )
     assert model.hypothesis_statement.startswith("消费者偏好")
 
 
-def test_contradiction_requires_dual_source_urls() -> None:
+def test_contradiction_schema() -> None:
     model = Contradiction(
         claim_a="线上渠道增速放缓",
         claim_b="线上渠道依然高速增长",
-        source_url_a="https://example.com/a",
-        source_url_b="https://example.com/b",
     )
-    assert model.source_url_a == "https://example.com/a"
-    assert model.source_url_b == "https://example.com/b"
-
-
-def test_contradiction_rejects_legacy_source_id_fields() -> None:
-    with pytest.raises(ValidationError):
-        Contradiction(
-            claim_a="线上渠道增速放缓",
-            claim_b="线上渠道依然高速增长",
-            source_url_a="https://example.com/a",
-            source_url_b="https://example.com/b",
-            source_id_a="src_a",
-            source_id_b="src_b",
-        )
+    assert model.claim_a == "线上渠道增速放缓"
 
 
 def test_data_point_has_no_runtime_id_field() -> None:
     model = DataPoint(
         name="market_size",
         value=3457,
-        source_url="https://example.com/c",
     )
     dumped = model.model_dump()
     assert "id" not in dumped
 
 
-def test_citation_schema_requires_claim_url_title() -> None:
-    model = Citation(
-        claim="市场规模提升",
-        url="https://example.com/citation",
-        title="2026 Market Report",
-    )
-    assert model.url == "https://example.com/citation"
-
-
-def test_citation_rejects_legacy_source_id_field() -> None:
-    with pytest.raises(ValidationError):
-        Citation(
-            claim="市场规模提升",
-            url="https://example.com/citation",
-            title="2026 Market Report",
-            source_id="src_001",
-        )
-
-
 def test_section_draft_has_no_model_facing_section_id() -> None:
     model = SectionDraft(
         content="## 市场概况",
-        citations=[{"claim": "增长", "url": "https://example.com/a", "title": "A"}],
         charts_used=[],
         weak_claims=[],
     )
@@ -240,7 +182,6 @@ def test_old_source_id_payload_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SectionFact(
             content="增长",
-            source_url="https://example.com/a",
             source_id="src_001",
             importance="high",
         )
@@ -253,7 +194,6 @@ def test_old_hypothesis_id_payload_is_rejected() -> None:
             hypothesis_id="h_001",
             evidence_type="supports",
             content="多个来源提到功能性需求增强",
-            source_url="https://example.com/b",
         )
 
 
@@ -263,7 +203,6 @@ def test_data_point_rejects_legacy_id_field() -> None:
             id="dp_001",
             name="market_size",
             value=3457,
-            source_url="https://example.com/c",
         )
 
 
@@ -272,7 +211,6 @@ def test_section_draft_rejects_legacy_section_id_field() -> None:
         SectionDraft(
             section_id="s1",
             content="## 市场概况",
-            citations=[{"claim": "增长", "url": "https://example.com/a", "title": "A"}],
             charts_used=[],
             weak_claims=[],
         )
@@ -282,12 +220,18 @@ def test_review_result_defaults() -> None:
     model = ReviewResult(
         quality_score=9,
         verdict="pass",
-        issues=[{"issue": "weak evidence"}],
-        claim_checks=[{"claim": "c1", "ok": False}],
+        issues=[
+            ReviewIssue(type="evidence", severity="minor", description="weak evidence")
+        ],
+        claim_checks=[
+            ClaimCheck(claim_text="c1", status="verified")
+        ],
     )
     assert isinstance(model.quality_score, int)
-    assert model.issues == [{"issue": "weak evidence"}]
-    assert model.claim_checks == [{"claim": "c1", "ok": False}]
+    assert len(model.issues) == 1
+    assert model.issues[0].type == "evidence"
+    assert len(model.claim_checks) == 1
+    assert model.claim_checks[0].claim_text == "c1"
     assert model.missing_aspects == []
 
 
@@ -300,18 +244,19 @@ def test_reviser_output_defaults() -> None:
 
 def test_final_result_schema() -> None:
     model = FinalResult(
-        resolved_issues=[{"issue": "i1"}],
-        unresolved_issues=[{"issue": "i2"}],
-        new_issues=[{"issue": "i3"}],
+        resolved_issues=[ResolutionItem(description="i1", status="fixed")],
+        unresolved_issues=[ResolutionItem(description="i2", status="pending")],
+        new_issues=[ResolutionItem(description="i3")],
         final_score=9,
         final_verdict="approved",
         publication_readiness="ready",
         final_comments="looks good",
     )
     assert isinstance(model.final_score, int)
-    assert model.resolved_issues == [{"issue": "i1"}]
-    assert model.unresolved_issues == [{"issue": "i2"}]
-    assert model.new_issues == [{"issue": "i3"}]
+    assert len(model.resolved_issues) == 1
+    assert model.resolved_issues[0].description == "i1"
+    assert len(model.unresolved_issues) == 1
+    assert len(model.new_issues) == 1
     assert model.final_verdict == "approved"
 
 

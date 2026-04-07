@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
-from deep_agents.configuration import Configuration
+from deep_agents.configuration import Configuration, FINAL_REPORT_RATE_LIMITER
 from deep_agents.prompts import synthesizer_prompt
 from deep_agents.state import ResearchState
 from deep_agents.utils import _strip_ctrl, get_api_key_for_model
@@ -23,6 +23,8 @@ async def synthesizer_node(
         max_tokens=configurable.final_report_model_max_tokens,
         api_key=get_api_key_for_model(configurable.final_report_model, config),
         base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
+        rate_limiter=FINAL_REPORT_RATE_LIMITER,
     )
 
     prompt_text = synthesizer_prompt.format(
@@ -35,7 +37,6 @@ async def synthesizer_node(
             state.get("hypothesis_evidence", [])[:20], ensure_ascii=False
         ),
         contradictions=json.dumps(state.get("contradictions", [])[:10], ensure_ascii=False),
-        sources=json.dumps(state.get("sources", [])[:30], ensure_ascii=False),
     )
     prompt_text = _strip_ctrl(prompt_text)
 

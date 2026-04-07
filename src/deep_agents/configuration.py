@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, field_validator
 
@@ -36,12 +37,22 @@ class MCPConfig(BaseModel):
     )
     """Whether the MCP server requires authentication"""
 
+
+FINAL_REPORT_RATE_LIMITER = InMemoryRateLimiter(
+    requests_per_second=0.5,
+    check_every_n_seconds=0.1,
+    max_bucket_size=1,
+)
+
 class Configuration(BaseModel):
     """Main configuration class for the Deep Research agent."""
     
     # General Configuration
     max_structured_output_retries: int = Field(
         default=3,
+    )
+    provider_max_retries: int = Field(
+        default=6,
     )
     allow_clarification: bool = Field(
         default=True,
@@ -53,11 +64,8 @@ class Configuration(BaseModel):
     search_api: SearchAPI = Field(
         default=SearchAPI.TAVILY,
     )
-    max_researcher_iterations: int = Field(
-        default=6,
-    )
-    max_react_tool_calls: int = Field(
-        default=10,
+    max_deep_scout_iterations: int = Field(
+        default=2,
     )
     tavily_timeout: int = Field(
         default=120,
@@ -85,7 +93,7 @@ class Configuration(BaseModel):
         default=8192,
     )
     final_report_model: str = Field(
-        default="openai:kimi-k2.5",
+        default="openai:kimi/kimi-k2.5",
     )
     final_report_model_max_tokens: int = Field(
         default=10000,

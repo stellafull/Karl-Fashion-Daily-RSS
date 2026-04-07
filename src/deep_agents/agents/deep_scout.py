@@ -1,16 +1,19 @@
 """DeepScout node — explicit tool-calling loop for section-level evidence collection.
 
 Runs a researcher -> researcher_tools loop: the LLM calls search tools and reflects
-until it calls ResearchComplete or hits max_react_tool_calls.
+until it calls ResearchComplete or hits max_deep_scout_iterations.
+
+After each tavily_search call the raw results are compressed (like open_deep_research's
+compress_research) before being fed back to the LLM and stored for downstream nodes.
 """
 import json
 import logging
-from typing import Any
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
+from deep_agents.agents.compress_search import compress_search
 from deep_agents.configuration import Configuration
 from deep_agents.prompts import deep_scout_prompt
 from deep_agents.state import SectionState
@@ -24,63 +27,7 @@ from deep_agents.utils import (
 logger = logging.getLogger(__name__)
 
 _RESEARCH_COMPLETE_TOOL_NAME = "ResearchComplete"
-
-
-def _serialize_tool_result(raw_result: Any) -> str:
-    """Convert a tool result to a bounded string for ToolMessage content."""
-    if isinstance(raw_result, str):
-        return raw_result[:3000]
-    return json.dumps(raw_result, ensure_ascii=False)[:3000]
-
-
-def _extract_results(
-    raw_tool_result: Any,
-    sources: list[dict[str, Any]],
-    seen_urls: set[str],
-) -> dict[str, Any]:
-    """Parse tool results and emit canonical source metadata."""
-    preview = _serialize_tool_result(raw_tool_result)
-    search_result: dict[str, Any] = {"raw": preview, "sources": []}
-
-    data: Any = raw_tool_result
-    if isinstance(raw_tool_result, str):
-        try:
-            data = json.loads(raw_tool_result)
-        except Exception:
-            return search_result
-
-    candidates: list[dict[str, Any]] = []
-    if isinstance(data, dict) and isinstance(data.get("results"), list):
-        candidates = [item for item in data["results"] if isinstance(item, dict)]
-    elif isinstance(data, list):
-        candidates = [item for item in data if isinstance(item, dict)]
-    else:
-        return search_result
-
-    for item in candidates:
-        raw_url = item.get("url")
-        if not isinstance(raw_url, str):
-            continue
-        url = raw_url.strip()
-        if not url or url in seen_urls:
-            continue
-        seen_urls.add(url)
-        raw_summary = item.get("summary")
-        raw_content = item.get("content")
-        if isinstance(raw_summary, str) and raw_summary.strip():
-            summary = raw_summary
-        elif isinstance(raw_content, str):
-            summary = raw_content
-        else:
-            summary = ""
-        source_record = {
-            "url": url,
-            "title": item.get("title", "") if isinstance(item.get("title"), str) else "",
-            "summary": summary,
-        }
-        sources.append(source_record)
-        search_result["sources"].append(source_record)
-    return search_result
+_THINK_TOOL_NAME = "think_tool"
 
 
 async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
@@ -98,41 +45,47 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
         max_tokens=configurable.research_model_max_tokens,
         api_key=get_api_key_for_model(configurable.research_model, config),
         base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
     )
     bound_model = model.bind_tools(callable_tools)
 
+    research_goal = state.get("research_goal", "")
+    section_title = state.get("section_title", "")
+    section_description = state.get("section_description", "")
+    hypotheses = state.get("hypotheses", [])
+
     system_prompt = deep_scout_prompt.format(
         date=get_today_str(),
-        research_goal=state.get("research_goal", ""),
-        section_title=state.get("section_title", ""),
-        section_description=state.get("section_description", ""),
+        research_goal=research_goal,
+        section_title=section_title,
+        section_description=section_description,
         search_queries="\n".join(state.get("search_queries", [])),
-        hypotheses=json.dumps(state.get("hypotheses", []), ensure_ascii=False),
+        hypotheses=json.dumps(hypotheses, ensure_ascii=False),
     )
     system_prompt = _strip_ctrl(system_prompt)
 
-    messages: list[Any] = [
+    messages: list = [
         SystemMessage(content=system_prompt),
         HumanMessage(content="请开始研究当前章节，收集足够的证据。"),
     ]
 
-    search_results: list[dict[str, Any]] = []
-    sources: list[dict] = []
-    seen_urls: set[str] = set()
+    search_results: list[str] = []
 
-    for _ in range(configurable.max_react_tool_calls):
+    for _ in range(configurable.max_deep_scout_iterations):
         response: AIMessage = await bound_model.ainvoke(messages)
         messages.append(response)
 
         if not response.tool_calls:
             break
 
-        done = False
+        done = any(
+            tc["name"] == _RESEARCH_COMPLETE_TOOL_NAME
+            for tc in response.tool_calls
+        )
         tool_messages = []
         for tc in response.tool_calls:
             if tc["name"] == _RESEARCH_COMPLETE_TOOL_NAME:
-                done = True
-                break
+                continue
 
             tool = tool_map.get(tc["name"])
             if tool is None:
@@ -147,10 +100,42 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
 
             try:
                 raw_result = await tool.ainvoke(tc, config=config)
-                content = _serialize_tool_result(raw_result)
-                search_results.append(
-                    _extract_results(raw_result, sources, seen_urls)
-                )
+
+                # tool.ainvoke with a ToolCall dict returns a ToolMessage,
+                # not the raw string.  Extract .content so downstream
+                # processing and json.dumps don't choke.
+                if isinstance(raw_result, ToolMessage):
+                    content = raw_result.content
+                elif isinstance(raw_result, str):
+                    content = raw_result
+                else:
+                    content = json.dumps(raw_result, ensure_ascii=False)
+
+                if not isinstance(content, str):
+                    content = json.dumps(content, ensure_ascii=False)
+
+                # Compress search/image results before feeding to LLM.
+                # think_tool reflections are internal — skip compression.
+                if tc["name"] != _THINK_TOOL_NAME and content:
+                    try:
+                        compressed = await compress_search(
+                            raw_content=content,
+                            research_goal=research_goal,
+                            section_title=section_title,
+                            section_description=section_description,
+                            hypotheses=hypotheses,
+                            config=config,
+                        )
+                        search_results.append(compressed)
+                        content = compressed  # LLM sees compressed version
+                    except Exception as compress_exc:
+                        logger.warning(
+                            "Compression failed for %s, using raw content: %s",
+                            tc["name"],
+                            compress_exc,
+                        )
+                        search_results.append(content)
+
                 tool_messages.append(
                     ToolMessage(
                         content=content,
@@ -173,7 +158,4 @@ async def deep_scout_node(state: SectionState, config: RunnableConfig) -> dict:
         if done:
             break
 
-    return {
-        "search_results": search_results,
-        "section_sources": sources,
-    }
+    return {"search_results": search_results}

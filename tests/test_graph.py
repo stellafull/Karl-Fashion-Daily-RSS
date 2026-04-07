@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langgraph.graph import END
-from langgraph.types import Command
+from langgraph.types import Command, Overwrite
 
 
 def test_graph_compiles_without_error() -> None:
@@ -55,10 +55,9 @@ async def test_section_pipeline_node_merges_results() -> None:
         "section_data_points": [{"name": "dp1", "value": 1, "source_url": "https://example.com"}],
         "section_hypothesis_evidence": [],
         "section_charts": [],
-        "section_insights": ["insight1"],
         "section_contradictions": [],
         "section_sources": [{"url": "https://example.com", "title": "example", "summary": ""}],
-        "missing_info": ["question1"],
+        "missing_info": [],
     }
 
     state = {
@@ -86,18 +85,20 @@ async def test_section_pipeline_node_merges_results() -> None:
 
     assert isinstance(result, Command)
     assert result.goto == "lead_writer"
-    assert result.update["facts"]["type"] == "override"
-    assert result.update["sources"]["type"] == "override"
-    assert result.update["insights"]["type"] == "override"
-    assert result.update["open_questions"]["type"] == "override"
-    assert len(result.update["facts"]["value"]) == 1
-    assert len(result.update["sources"]["value"]) == 1
-    assert result.update["facts"]["value"][0]["section_id"] == "sec_1"
-    assert result.update["sources"]["value"][0]["section_id"] == "sec_1"
-    assert "source_id" not in result.update["facts"]["value"][0]
-    assert "source_id" not in result.update["sources"]["value"][0]
-    assert result.update["insights"]["value"][0]["section_id"] == "sec_1"
-    assert result.update["open_questions"]["value"][0]["section_id"] == "sec_1"
+    # Overwrite wraps the value
+    facts = result.update["facts"]
+    sources = result.update["sources"]
+    assert isinstance(facts, Overwrite)
+    assert isinstance(sources, Overwrite)
+    assert len(facts.value) == 1
+    assert len(sources.value) == 1
+    assert facts.value[0]["section_id"] == "sec_1"
+    assert sources.value[0]["section_id"] == "sec_1"
+    assert "source_id" not in facts.value[0]
+    assert "source_id" not in sources.value[0]
+    # insights and open_questions are removed from state
+    assert "insights" not in result.update
+    assert "open_questions" not in result.update
     assert "failed_sections" not in result.update
 
 
@@ -110,7 +111,6 @@ async def test_section_pipeline_node_raises_when_any_section_subgraph_fails() ->
         "section_data_points": [],
         "section_hypothesis_evidence": [],
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [],
         "section_sources": [{"url": "https://example.com/1", "title": "one", "summary": ""}],
         "missing_info": [],
@@ -174,7 +174,6 @@ async def test_section_pipeline_cancels_sibling_sections_on_first_failure() -> N
                     "section_data_points": [],
                     "section_hypothesis_evidence": [],
                     "section_charts": [],
-                    "section_insights": [],
                     "section_contradictions": [],
                     "section_sources": [],
                     "missing_info": [],
@@ -257,7 +256,6 @@ async def test_section_pipeline_cancels_and_drains_children_on_external_cancella
             "section_data_points": [],
             "section_hypothesis_evidence": [],
             "section_charts": [],
-            "section_insights": [],
             "section_contradictions": [],
             "section_sources": [],
             "missing_info": [],
@@ -345,7 +343,6 @@ async def test_section_pipeline_external_cancellation_drains_completed_child_exc
             "section_data_points": [],
             "section_hypothesis_evidence": [],
             "section_charts": [],
-            "section_insights": [],
             "section_contradictions": [],
             "section_sources": [],
             "missing_info": [],
@@ -411,18 +408,21 @@ async def test_section_pipeline_external_cancellation_drains_completed_child_exc
         await asyncio.sleep(0)
 
 
-async def test_section_pipeline_fails_fast_on_unresolved_source_url_reference() -> None:
-    """Dangling source_url references should fail fast during section merge."""
+async def test_section_pipeline_warns_and_skips_invalid_source_url() -> None:
+    """Records with empty/blank source_url are dropped with a warning, not crashed."""
     from deep_agents.graph import section_pipeline_node
 
     section_result = {
-        "section_facts": [{"content": "fact1", "source_url": "https://example.com/missing"}],
+        "section_facts": [
+            {"content": "good fact", "source_url": "https://example.com/a"},
+            {"content": "bad fact", "source_url": ""},
+            {"content": "blank fact", "source_url": "   "},
+        ],
         "section_data_points": [],
         "section_hypothesis_evidence": [],
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [],
-        "section_sources": [{"url": "https://example.com", "title": "example", "summary": ""}],
+        "section_sources": [{"url": "https://example.com/a", "title": "a", "summary": ""}],
         "missing_info": [],
     }
     state = {
@@ -440,96 +440,15 @@ async def test_section_pipeline_fails_fast_on_unresolved_source_url_reference() 
     mock_sg.ainvoke = AsyncMock(return_value=section_result)
 
     with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
-        with pytest.raises(ValueError, match="Unresolved source_url"):
-            await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
+        result = await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
+
+    # Good fact kept, empty and blank source_url facts dropped
+    assert len(result.update["facts"].value) == 1
+    assert result.update["facts"].value[0]["content"] == "good fact"
 
 
-@pytest.mark.parametrize(
-    ("field_name", "record"),
-    [
-        ("section_facts", {"content": "fact-without-source"}),
-        ("section_data_points", {"name": "dp-without-source", "value": 1}),
-        (
-            "section_hypothesis_evidence",
-            {
-                "hypothesis_statement": "h1",
-                "evidence_type": "supports",
-                "content": "evidence-without-source",
-            },
-        ),
-    ],
-)
-async def test_section_pipeline_fails_fast_when_required_source_url_missing(
-    field_name: str, record: dict
-) -> None:
-    """Facts/data/evidence records must include source_url and fail fast if missing."""
-    from deep_agents.graph import section_pipeline_node
-
-    section_result = {
-        "section_facts": [],
-        "section_data_points": [],
-        "section_hypothesis_evidence": [],
-        "section_charts": [],
-        "section_insights": [],
-        "section_contradictions": [],
-        "section_sources": [{"url": "https://example.com", "title": "example", "summary": ""}],
-        "missing_info": [],
-    }
-    section_result[field_name] = [record]
-    state = {
-        "sections": [
-            {"id": "sec_1", "title": "T", "description": "D", "search_queries": ["q"], "priority": 1}
-        ],
-        "research_goal": "研究",
-        "hypotheses": [],
-        "language": "zh",
-        "outline_revision_count": 0,
-        "hypothesis_evidence": [],
-    }
-
-    mock_sg = MagicMock()
-    mock_sg.ainvoke = AsyncMock(return_value=section_result)
-
-    with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
-        with pytest.raises(ValueError, match="Missing required source_url"):
-            await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
-
-
-async def test_section_pipeline_rejects_legacy_source_id_only_records() -> None:
-    """Legacy source_id-only records are no longer accepted by active merge contract."""
-    from deep_agents.graph import section_pipeline_node
-
-    section_result = {
-        "section_facts": [{"content": "legacy fact", "source_id": "src_000"}],
-        "section_data_points": [],
-        "section_hypothesis_evidence": [],
-        "section_charts": [],
-        "section_insights": [],
-        "section_contradictions": [],
-        "section_sources": [{"url": "https://example.com", "title": "example", "summary": ""}],
-        "missing_info": [],
-    }
-    state = {
-        "sections": [
-            {"id": "sec_1", "title": "T", "description": "D", "search_queries": ["q"], "priority": 1}
-        ],
-        "research_goal": "研究",
-        "hypotheses": [],
-        "language": "zh",
-        "outline_revision_count": 0,
-        "hypothesis_evidence": [],
-    }
-
-    mock_sg = MagicMock()
-    mock_sg.ainvoke = AsyncMock(return_value=section_result)
-
-    with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
-        with pytest.raises(ValueError, match="Missing required source_url"):
-            await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
-
-
-async def test_section_pipeline_trims_incidental_whitespace_in_source_url_refs() -> None:
-    """Whitespace around URL references should be trimmed before source matching."""
+async def test_section_pipeline_trims_whitespace_in_source_url_refs() -> None:
+    """Whitespace around URL references should be trimmed."""
     from deep_agents.graph import section_pipeline_node
 
     section_result = {
@@ -544,7 +463,6 @@ async def test_section_pipeline_trims_incidental_whitespace_in_source_url_refs()
             }
         ],
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [
             {
                 "claim_a": "a",
@@ -573,142 +491,20 @@ async def test_section_pipeline_trims_incidental_whitespace_in_source_url_refs()
     with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
         result = await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
 
-    assert result.update["facts"]["value"][0]["source_url"] == "https://example.com/a"
-    assert result.update["data_points"]["value"][0]["source_url"] == "https://example.com/a"
+    assert result.update["facts"].value[0]["source_url"] == "https://example.com/a"
+    assert result.update["data_points"].value[0]["source_url"] == "https://example.com/a"
     assert (
-        result.update["hypothesis_evidence"]["value"][0]["source_url"]
+        result.update["hypothesis_evidence"].value[0]["source_url"]
         == "https://example.com/a"
     )
     assert (
-        result.update["contradictions"]["value"][0]["source_url_a"]
+        result.update["contradictions"].value[0]["source_url_a"]
         == "https://example.com/a"
     )
     assert (
-        result.update["contradictions"]["value"][0]["source_url_b"]
+        result.update["contradictions"].value[0]["source_url_b"]
         == "https://example.com/a"
     )
-
-
-async def test_section_pipeline_drops_legacy_keys_from_hybrid_url_records() -> None:
-    """Hybrid URL records with stale legacy keys should not leak legacy keys into merged output."""
-    from deep_agents.graph import section_pipeline_node
-
-    section_result = {
-        "section_facts": [
-            {"content": "fact", "source_url": "https://example.com/a", "source_id": "src_legacy"}
-        ],
-        "section_data_points": [
-            {
-                "name": "dp",
-                "value": 1,
-                "source_url": "https://example.com/a",
-                "id": "dp_legacy",
-                "source_id": "src_legacy",
-            }
-        ],
-        "section_hypothesis_evidence": [
-            {
-                "hypothesis_statement": "h1",
-                "evidence_type": "supports",
-                "content": "e",
-                "source_url": "https://example.com/a",
-                "hypothesis_id": "h_legacy",
-                "source_id": "src_legacy",
-            }
-        ],
-        "section_charts": [],
-        "section_insights": [],
-        "section_contradictions": [
-            {
-                "claim_a": "a",
-                "claim_b": "b",
-                "source_url_a": "https://example.com/a",
-                "source_url_b": "https://example.com/a",
-                "source_id_a": "src_legacy_a",
-                "source_id_b": "src_legacy_b",
-            }
-        ],
-        "section_sources": [
-            {
-                "url": "https://example.com/a",
-                "title": "a",
-                "summary": "",
-                "source_id": "src_legacy",
-            }
-        ],
-        "missing_info": [],
-    }
-    state = {
-        "sections": [
-            {"id": "sec_1", "title": "T", "description": "D", "search_queries": ["q"], "priority": 1}
-        ],
-        "research_goal": "研究",
-        "hypotheses": [],
-        "language": "zh",
-        "outline_revision_count": 0,
-        "hypothesis_evidence": [],
-    }
-
-    mock_sg = MagicMock()
-    mock_sg.ainvoke = AsyncMock(return_value=section_result)
-
-    with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
-        result = await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
-
-    merged_fact = result.update["facts"]["value"][0]
-    merged_data_point = result.update["data_points"]["value"][0]
-    merged_evidence = result.update["hypothesis_evidence"]["value"][0]
-    merged_contradiction = result.update["contradictions"]["value"][0]
-    merged_source = result.update["sources"]["value"][0]
-
-    assert "source_id" not in merged_fact
-    assert "source_id" not in merged_data_point
-    assert "id" not in merged_data_point
-    assert "source_id" not in merged_evidence
-    assert "hypothesis_id" not in merged_evidence
-    assert "source_id_a" not in merged_contradiction
-    assert "source_id_b" not in merged_contradiction
-    assert "source_id" not in merged_source
-
-
-async def test_section_pipeline_fails_fast_on_unresolved_contradiction_source_urls() -> None:
-    """Contradiction source_url_a/source_url_b must resolve from section sources."""
-    from deep_agents.graph import section_pipeline_node
-
-    section_result = {
-        "section_facts": [],
-        "section_data_points": [],
-        "section_hypothesis_evidence": [],
-        "section_charts": [],
-        "section_insights": [],
-        "section_contradictions": [
-            {
-                "claim_a": "a",
-                "claim_b": "b",
-                "source_url_a": "https://example.com/missing-a",
-                "source_url_b": "https://example.com/missing-b",
-            }
-        ],
-        "section_sources": [{"url": "https://example.com", "title": "example", "summary": ""}],
-        "missing_info": [],
-    }
-    state = {
-        "sections": [
-            {"id": "sec_1", "title": "T", "description": "D", "search_queries": ["q"], "priority": 1}
-        ],
-        "research_goal": "研究",
-        "hypotheses": [],
-        "language": "zh",
-        "outline_revision_count": 0,
-        "hypothesis_evidence": [],
-    }
-
-    mock_sg = MagicMock()
-    mock_sg.ainvoke = AsyncMock(return_value=section_result)
-
-    with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
-        with pytest.raises(ValueError, match="Unresolved source_url"):
-            await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
 
 
 async def test_section_pipeline_routes_to_outline_reviser_when_refuted() -> None:
@@ -734,7 +530,6 @@ async def test_section_pipeline_routes_to_outline_reviser_when_refuted() -> None
         "section_data_points": [],
         "section_hypothesis_evidence": refuted_evidence,
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [],
         "section_sources": [
             {"url": "https://example.com/1", "title": "one", "summary": ""},
@@ -786,7 +581,6 @@ async def test_section_pipeline_does_not_route_to_outline_reviser_when_count_at_
         "section_data_points": [],
         "section_hypothesis_evidence": refuted_evidence,
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [],
         "section_sources": [
             {"url": "https://example.com/1", "title": "one", "summary": ""},

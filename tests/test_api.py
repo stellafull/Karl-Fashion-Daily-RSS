@@ -86,8 +86,8 @@ async def test_writer_node_emits_section_done_custom_events() -> None:
     mock_chain = MagicMock()
     mock_chain.ainvoke = AsyncMock(
         side_effect=[
-            SectionDraft(content="draft-1", citations=[], charts_used=[], weak_claims=[]),
-            SectionDraft(content="draft-2", citations=[], charts_used=[], weak_claims=[]),
+            SectionDraft(content="draft-1", charts_used=[], weak_claims=[]),
+            SectionDraft(content="draft-2", charts_used=[], weak_claims=[]),
         ]
     )
 

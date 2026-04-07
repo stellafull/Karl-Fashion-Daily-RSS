@@ -1,6 +1,20 @@
 # All Chinese agent prompts — one module-level constant per agent.
 
-clarify_prompt = """
+STRICT_JSON_OUTPUT_RULES = """
+输出规则：
+- 只输出一个有效 JSON 对象
+- 不要输出 Markdown
+- 不要输出代码块
+- 不要输出解释、注释、前言、总结
+- 不要输出 JSON 以外的任何字符
+- 所有键名和字符串值必须使用双引号
+- 不允许输出 null
+- 不允许尾逗号
+- 你的回答将被 json.loads() 直接解析，解析失败视为失败
+""".strip()
+
+clarify_prompt = (
+    """
 今天的日期是 {date}。
 
 以下是用户请求深度研究时发送的消息：
@@ -18,11 +32,31 @@ clarify_prompt = """
 - 大多数情况下不需要澄清，直接提取研究目标
 - 研究目标使用第一人称，从用户角度表达
 - 检测用户使用的语言（zh/en）
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：need_clarification, clarification_question, research_goal, confirmed_constraints, open_dimensions, language
-""".strip()
+- 顶层只允许包含这些字段：need_clarification, clarification_question, research_goal, confirmed_constraints, open_dimensions, language
 
-planner_prompt = """
+输出 JSON 格式：
+```json
+{{
+  "need_clarification": false,
+  "clarification_question": "",
+  "research_goal": "研究目标",
+  "confirmed_constraints": ["约束1"],
+  "open_dimensions": ["维度1"],
+  "language": "zh"
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+planner_prompt = (
+    """
 今天的日期是 {date}。
 
 研究目标：{research_goal}
@@ -30,29 +64,64 @@ planner_prompt = """
 开放维度：{open_dimensions}
 输出语言：{language}
 
-你是时尚行业深度研究系统的架构规划师。请为上述研究目标制定完整研究计划。
+你是时尚行业深度研究系统的架构规划师。请基于以上信息生成研究计划。
 
 任务：
-1. 将研究分类为以下类型之一：
-   trend_analysis（趋势分析）| brand_analysis（品牌分析）| market_overview（市场概况）| consumer_insight（消费者洞察）| competitive_landscape（竞争格局）
-2. 生成 2-4 个待验证的研究假设，每个假设只需提供一句话陈述
-3. 设计 3-6 个研究章节，每章节提供 2-4 个搜索词（中英文结合）
+1. 选择一个 research_type，只能是以下之一：
+trend_analysis, brand_analysis, market_overview, consumer_insight, competitive_landscape
 
-时尚研究指引：
-- 趋势研究需覆盖：秀场、社交媒体、零售数据三个维度
-- 品牌研究需覆盖：财报、品牌定位、消费者认知
+2. 生成 2-4 条 hypotheses：
+- 必须是字符串数组
+- 每条只写一句待验证假设
+- 不要编号
+- 不要解释
 
-输出约束：
-- 只输出一个有效 JSON 对象，不要输出 Markdown、解释文字或代码块
-- research_type 必须是以下之一：trend_analysis、brand_analysis、market_overview、consumer_insight、competitive_landscape
-- hypotheses 是字符串数组，每条只包含假设陈述文字
-- sections 每条包含：title、description、search_queries（字符串数组）
-- sections 必须是非空数组；如果无法给出 3 个章节，宁可重试推理，也不要输出空 sections
+3. 生成 3-6 个 sections：
+- 每个 section 必须包含 title、description、search_queries
+- search_queries 必须是 2-4 条字符串
+- search_queries 必须中英文结合
+- sections 不能为空
+- sections 必须彼此不重复，覆盖研究目标的不同维度
+- 不要生成语义重叠的 title 或 search_queries
 
-以有效 JSON 格式响应，包含字段：research_type, hypotheses（字符串数组）, sections（每条含 title/description/search_queries）
-""".strip()
+补充规则：
+- 如果 research_type 是 trend_analysis，需覆盖：秀场、社交媒体、零售数据
+- 如果 research_type 是 brand_analysis，需覆盖：财报、品牌定位、消费者认知
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-outline_reviser_prompt = """
+- 顶层只允许包含这三个字段：research_type, hypotheses, sections
+- 每个 section 只允许包含这三个字段：title, description, search_queries
+
+输出 JSON 格式：
+```json
+{{
+  "research_type": "<one_of_allowed_types>",
+  "hypotheses": [
+    "假设1",
+    "假设2"
+  ],
+  "sections": [
+    {{
+      "title": "章节标题",
+      "description": "章节说明",
+      "search_queries": [
+        "搜索词1",
+        "搜索词2"
+      ]
+    }}
+  ]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+outline_reviser_prompt = (
+    """
 研究目标：{research_goal}
 
 当前章节大纲：
@@ -68,9 +137,37 @@ outline_reviser_prompt = """
 - 保留原章节 ID，避免下游混乱
 - 可以新增、删除或重排章节，但保持最小改动
 - 每次任务最多修订一次
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：sections（完整章节列表），outline_status="revised"
-""".strip()
+- 顶层只允许包含这些字段：sections, outline_status
+- sections 中每个对象只允许包含：id, title, description, search_queries, priority
+- outline_status 必须为 "revised"
+
+输出 JSON 格式：
+```json
+{{
+  "sections": [
+    {{
+      "id": "sec_1",
+      "title": "章节标题",
+      "description": "章节说明",
+      "search_queries": [
+        "搜索词1",
+        "搜索词2"
+      ],
+      "priority": 1
+    }}
+  ],
+  "outline_status": "revised"
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
 
 deep_scout_prompt = """
 今天的日期是 {date}。
@@ -102,7 +199,8 @@ deep_scout_prompt = """
 - 不要忽略反驳工作假设的证据
 """.strip()
 
-analyst_prompt = """
+analyst_prompt = (
+    """
 研究目标：{research_goal}
 章节：{section_title} — {section_description}
 待验证假设：
@@ -118,12 +216,49 @@ analyst_prompt = """
 2. 评估每个假设的证据状态：supports（支持）| refutes（反驳）| inconclusive（不确定）
 3. 提炼超越单一来源的战略洞察
 4. 记录矛盾信息（不要解决，保留原样）
-5. 识别关键实体和关系
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：section_facts（每条含 content/source_url/importance）, section_insights, section_hypothesis_evidence（每条含 hypothesis_statement/evidence_type/content/source_url）, section_contradictions（每条含 claim_a/claim_b/source_url_a/source_url_b）, section_entities（每条含 name/type）, missing_info
-""".strip()
+- 顶层只允许包含这些字段：section_facts, section_insights, section_hypothesis_evidence, section_contradictions, missing_info
+- section_facts 中每个对象只允许包含：content, importance
+- section_hypothesis_evidence 中每个对象只允许包含：hypothesis_statement, evidence_type, content
+- section_contradictions 中每个对象只允许包含：claim_a, claim_b
 
-data_wiz_prompt = """
+输出 JSON 格式：
+```json
+{{
+  "section_facts": [
+    {{
+      "content": "关键事实",
+      "importance": "high"
+    }}
+  ],
+  "section_insights": ["战略洞察1"],
+  "section_hypothesis_evidence": [
+    {{
+      "hypothesis_statement": "待验证假设",
+      "evidence_type": "supports",
+      "content": "支持或反驳该假设的证据"
+    }}
+  ],
+  "section_contradictions": [
+    {{
+      "claim_a": "观点A",
+      "claim_b": "观点B"
+    }}
+  ],
+  "missing_info": ["仍缺失的信息"]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+data_wiz_prompt = (
+    """
 研究目标：{research_goal}
 章节：{section_title}
 
@@ -140,14 +275,46 @@ data_wiz_prompt = """
 
 规则：
 - 不得捏造或推断数字
-- 所有数据点必须有 source_url
 - section_data_points 中不得输出 id 或 source_id 字段
 - 仅在数据足够清晰时才生成图表
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：section_data_points（每条含 name/value/unit/year/source_url/category/confidence）, section_charts（ECharts option 配置）, section_time_series
-""".strip()
+- 顶层只允许包含这些字段：section_data_points, section_charts
+- section_data_points 中每个对象只允许包含：name, value, unit, year, category, confidence
+- section_charts 必须是图表配置对象数组
 
-writer_prompt = """
+输出 JSON 格式：
+```json
+{{
+  "section_data_points": [
+    {{
+      "name": "数据点名称",
+      "value": 123,
+      "unit": "%",
+      "year": 2025,
+      "category": "分类",
+      "confidence": "高"
+    }}
+  ],
+  "section_charts": [
+    {{
+      "title": "图表标题",
+      "type": "bar",
+      "option": {{}}
+    }}
+  ]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+writer_prompt = (
+    """
 研究目标：{research_goal}
 完整章节大纲：{sections_list}
 当前章节假设验证结果：{hypothesis_evidence}
@@ -172,9 +339,28 @@ writer_prompt = """
 6. 保持内容与当前章节标题/描述严格一致，不偏离章节边界
 7. 严格仅使用当前章节提供的事实/数据/图表/矛盾信息/假设证据，不得引用其他章节
 8. 目标字数：500-1000字
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：content（Markdown 格式正文）, citations（每条含 claim/url/title）, charts_used, weak_claims
-""".strip()
+- 顶层只允许包含这些字段：content, charts_used, weak_claims
+- content 必须是 Markdown 正文字符串，引用来源时直接使用 [来源标题](URL) 内联格式
+- charts_used 必须是字符串数组
+- weak_claims 必须是字符串数组
+
+输出 JSON 格式：
+```json
+{{
+  "content": "## 章节标题\\n\\n正文内容，引用来源时使用 [来源标题](URL)。",
+  "charts_used": ["图表标题1"],
+  "weak_claims": ["证据较弱的判断"]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
 
 synthesizer_prompt = """
 研究目标：{research_goal}
@@ -188,9 +374,6 @@ synthesizer_prompt = """
 
 矛盾信息：
 {contradictions}
-
-信息来源列表：
-{sources}
 
 你是研究报告合成专家。请将所有章节草稿合并为一份完整的专业研究报告。
 
@@ -215,9 +398,6 @@ trend_triangulator_prompt = """
 收集的事实：
 {facts}
 
-信息来源：
-{sources}
-
 你是时尚趋势验证专家。请对报告中的每个趋势声明进行三信号交叉验证。
 
 三种信号类型：
@@ -235,7 +415,8 @@ trend_triangulator_prompt = """
 直接输出修订后的完整 Markdown 报告。
 """.strip()
 
-reviewer_prompt = """
+reviewer_prompt = (
+    """
 研究目标：{research_goal}
 研究大纲：{sections}
 
@@ -265,11 +446,44 @@ reviewer_prompt = """
 - 1-4：重大问题
 
 quality_score >= 7 时 verdict = "pass"，否则 verdict = "fail"
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：quality_score, verdict, issues（每条含 id/type/severity/description/suggestion）, claim_checks（每条含 claim_text/source_url/status）, missing_aspects
-""".strip()
+- 顶层只允许包含这些字段：quality_score, verdict, issues, claim_checks, missing_aspects
+- issues 中每个对象只允许包含：type, severity, description, suggestion
+- claim_checks 中每个对象只允许包含：claim_text, status
 
-reviser_prompt = """
+输出 JSON 格式：
+```json
+{{
+  "quality_score": 8,
+  "verdict": "pass",
+  "issues": [
+    {{
+      "type": "evidence",
+      "severity": "major",
+      "description": "问题描述",
+      "suggestion": "修订建议"
+    }}
+  ],
+  "claim_checks": [
+    {{
+      "claim_text": "需要核查的声明",
+      "status": "verified"
+    }}
+  ],
+  "missing_aspects": ["缺失方面"]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+reviser_prompt = (
+    """
 原始报告：
 {full_report}
 
@@ -283,11 +497,31 @@ reviser_prompt = """
 2. 有证据支持时才添加内容，不捏造信息
 3. 修正事实/逻辑问题
 4. 保持行文风格一致
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：full_report（修订后的完整 Markdown 报告）, changes_made, addressed_issues, unable_to_address（附原因）
-""".strip()
+- 顶层只允许包含这些字段：full_report, changes_made, addressed_issues, unable_to_address
+- full_report 必须是 Markdown 报告字符串
+- changes_made、addressed_issues、unable_to_address 必须是字符串数组
 
-final_check_prompt = """
+输出 JSON 格式：
+```json
+{{
+  "full_report": "# 修订后报告\\n\\n正文内容",
+  "changes_made": ["改动1"],
+  "addressed_issues": ["已处理问题1"],
+  "unable_to_address": ["未处理问题及原因"]
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+final_check_prompt = (
+    """
 研究目标：{research_goal}
 上一轮审稿问题：{review_result}
 当前报告：
@@ -301,11 +535,70 @@ final_check_prompt = """
 2. 检查修订过程中是否引入新问题
 3. 对证据不足的声明添加标注
 4. 如已达到最大修订次数（2次）且仍有问题，标记为 needs_review 而非阻止发布
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：resolved_issues, unresolved_issues, new_issues, final_score（1-10）, final_verdict（approved/rejected）, publication_readiness（ready/needs_review）, final_comments
+- 顶层只允许包含这些字段：resolved_issues, unresolved_issues, new_issues, final_score, final_verdict, publication_readiness, final_comments
+- resolved_issues、unresolved_issues、new_issues 中每个对象只允许包含：description, status
+- final_verdict 只能是 approved 或 rejected
+- publication_readiness 只能是 ready 或 needs_review
+
+输出 JSON 格式：
+```json
+{{
+  "resolved_issues": [
+    {{
+      "description": "已修复问题",
+      "status": "fixed"
+    }}
+  ],
+  "unresolved_issues": [],
+  "new_issues": [],
+  "final_score": 8,
+  "final_verdict": "approved",
+  "publication_readiness": "ready",
+  "final_comments": "可以发布"
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
+
+compress_search_prompt = """
+今天的日期是 {date}。
+研究目标：{research_goal}
+当前章节：{section_title} — {section_description}
+待验证假设：
+{hypotheses}
+
+以下是通过多次搜索收集的原始结果：
+
+{raw_search_results}
+
+你是研究信息压缩专家。请将上述搜索结果压缩为一份精炼的研究素材摘要。
+
+压缩原则：
+1. **保留所有 URL**：每条信息必须保留其来源 URL，格式为 [标题](URL)
+2. **保留精确数据**：所有数字、百分比、金额、日期必须原样保留
+3. **保留矛盾信息**：不同来源的对立观点都要保留
+4. **保留假设相关证据**：支持或反驳假设的关键证据优先保留
+5. **去除冗余**：多个来源重复的信息只保留一次（注明多源验证）
+6. **去除无关内容**：与当前章节主题无关的信息可删除
+
+输出目标：将内容压缩至原文的 30-50%，按主题分组，每条关键信息附带来源链接，不丢失任何关键事实或数据。
+
+输出规则：
+- 直接输出压缩后的 Markdown 文本
+- 不要输出 JSON
+- 不要输出代码块
+- 不要输出解释、前言或总结
 """.strip()
 
-summarize_webpage_prompt = """
+summarize_webpage_prompt = (
+    """
 今天的日期是 {date}。
 
 请对以下网页内容进行摘要，提取关键信息供时尚研究使用。
@@ -316,12 +609,25 @@ summarize_webpage_prompt = """
 
 请提供：
 1. 简洁摘要（保留关键数据、声明和观点，200字以内）
-2. 关键摘录（最重要的数字、引用或事实，逐条列出）
+2. 关键摘录（最重要的数字、引用或事实，合并为一段文字）
+"""
+    + "\n\n"
+    + STRICT_JSON_OUTPUT_RULES
+    + """
 
-以有效 JSON 格式响应，包含字段：summary, key_excerpts
-summary: str
-key_excerpts: str
-""".strip()
+- 顶层只允许包含这些字段：summary, key_excerpts
+
+输出 JSON 格式：
+```json
+{{
+  "summary": "简洁摘要",
+  "key_excerpts": "关键摘录"
+}}
+```
+
+现在直接输出最终 JSON。
+"""
+).strip()
 
 analyze_image_prompt = """
 你是时尚行业专家，请分析这张时尚图片（秀场、lookbook 或社交媒体图片）。

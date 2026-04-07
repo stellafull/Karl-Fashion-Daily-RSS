@@ -15,7 +15,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import outline_reviser_prompt
 from deep_agents.schemas import RevisedOutline
 from deep_agents.state import ResearchState
-from deep_agents.utils import _strip_ctrl, get_api_key_for_model
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model, STRUCTURED_OUTPUT_RETRY_EXCEPTIONS
 
 
 async def outline_reviser_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -28,10 +28,15 @@ async def outline_reviser_node(state: ResearchState, config: RunnableConfig) -> 
             max_tokens=configurable.research_model_max_tokens,
             api_key=get_api_key_for_model(configurable.research_model, config),
             base_url=configurable.openai_compatible_base_url,
+            max_retries=configurable.provider_max_retries,
             disable_streaming=True,
         )
         .with_structured_output(RevisedOutline)
-        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+        .with_retry(
+            retry_if_exception_type=STRUCTURED_OUTPUT_RETRY_EXCEPTIONS,
+            wait_exponential_jitter=True,
+            stop_after_attempt=configurable.max_structured_output_retries,
+        )
     )
 
     research_goal = state.get("research_goal", "")

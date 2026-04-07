@@ -26,3 +26,4 @@ tests/
 
 # Local-only developer scripts
 /scripts/local/
+.omx/

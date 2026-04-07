@@ -11,6 +11,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 import aiohttp
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -29,10 +30,14 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.config import get_store
 from mcp import McpError
 from tavily import AsyncTavilyClient
+from pydantic import ValidationError
 
 from deep_agents.configuration import Configuration, SearchAPI
 from deep_agents.prompts import summarize_webpage_prompt
 from deep_agents.schemas import ResearchComplete, Summary
+
+
+STRUCTURED_OUTPUT_RETRY_EXCEPTIONS = (OutputParserException, ValidationError)
 
 
 def _strip_ctrl(obj):
@@ -70,7 +75,7 @@ async def tavily_search(
         config: Runtime configuration for API keys and model settings
 
     Returns:
-        Formatted string containing summarized search results
+        Structured summarized search results
     """
     # Step 1: Execute search queries asynchronously
     search_results = await tavily_search_async(
@@ -102,8 +107,11 @@ async def tavily_search(
         max_tokens=configurable.summarization_model_max_tokens,
         api_key=model_api_key,
         base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
         tags=["langsmith:nostream"]
     ).with_structured_output(Summary).with_retry(
+        retry_if_exception_type=STRUCTURED_OUTPUT_RETRY_EXCEPTIONS,
+        wait_exponential_jitter=True,
         stop_after_attempt=configurable.max_structured_output_retries
     )
     
@@ -287,6 +295,7 @@ async def analyze_image(url: str, config: Annotated[RunnableConfig, InjectedTool
         model=configurable.research_model,
         api_key=model_api_key,
         base_url=configurable.openai_compatible_base_url,
+        max_retries=configurable.provider_max_retries,
         tags=["langsmith:nostream"],
     )
 

@@ -1,4 +1,5 @@
 """Tests for deep_scout_node, analyst_node, and data_wiz_node."""
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from deep_agents.schemas import AnalystOutput, DataWizOutput
@@ -19,11 +20,9 @@ def section_state():
         "section_insights": [],
         "section_hypothesis_evidence": [],
         "section_contradictions": [],
-        "section_entities": [],
         "missing_info": [],
         "section_data_points": [],
         "section_charts": [],
-        "section_time_series": [],
         "section_sources": [],
     }
 
@@ -87,7 +86,6 @@ async def test_analyst_returns_facts(section_state, mock_config):
     )
     assert "source_id_a" not in result["section_contradictions"][0]
     assert "source_id_b" not in result["section_contradictions"][0]
-    assert "section_entities" in result
     assert "missing_info" in result
     assert m.call_args.kwargs["disable_streaming"] is True
 
@@ -120,8 +118,51 @@ async def test_data_wiz_returns_data_points(section_state, mock_config):
     )
     assert "id" not in result["section_data_points"][0]
     assert "section_charts" in result
-    assert "section_time_series" in result
     assert m.call_args.kwargs["disable_streaming"] is True
+
+
+async def test_analyst_prompt_receives_full_search_results_payload(section_state, mock_config):
+    from deep_agents.agents.analyst import analyst_node
+
+    full_payload = (
+        '[{"url":"https://example.com/a","title":"A","summary":"'
+        + ("x" * 3500)
+        + '"}]'
+    )
+    section_state["search_results"] = [{"raw": full_payload, "sources": []}]
+
+    mock_out = AnalystOutput()
+    mock_chain = MagicMock()
+    mock_chain.ainvoke = AsyncMock(return_value=mock_out)
+    with patch("deep_agents.agents.analyst.init_chat_model") as m:
+        m.return_value.with_structured_output.return_value.with_retry.return_value = mock_chain
+        await analyst_node(section_state, mock_config)
+
+    prompt = mock_chain.ainvoke.await_args.args[0][0].content
+    search_results_json = prompt.split("搜索结果：\n", 1)[1].split("\n\n你是时尚行业研究分析师", 1)[0]
+    assert json.loads(search_results_json)[0]["raw"] == full_payload
+
+
+async def test_data_wiz_prompt_receives_full_search_results_payload(section_state, mock_config):
+    from deep_agents.agents.data_wiz import data_wiz_node
+
+    full_payload = (
+        '[{"url":"https://example.com/a","title":"A","summary":"'
+        + ("x" * 3500)
+        + '"}]'
+    )
+    section_state["search_results"] = [{"raw": full_payload, "sources": []}]
+
+    mock_out = DataWizOutput()
+    mock_chain = MagicMock()
+    mock_chain.ainvoke = AsyncMock(return_value=mock_out)
+    with patch("deep_agents.agents.data_wiz.init_chat_model") as m:
+        m.return_value.with_structured_output.return_value.with_retry.return_value = mock_chain
+        await data_wiz_node(section_state, mock_config)
+
+    prompt = mock_chain.ainvoke.await_args.args[0][0].content
+    search_results_json = prompt.split("搜索结果（含数据）：\n", 1)[1].split("\n\n你是时尚行业数据分析师", 1)[0]
+    assert json.loads(search_results_json)[0]["raw"] == full_payload
 
 
 async def test_deep_scout_exits_on_research_complete(section_state, mock_config):
@@ -248,19 +289,21 @@ async def test_section_pipeline_tags_section_scoped_evidence_and_unique_sources(
     with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
         result = await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
 
-    assert result.update["facts"]["type"] == "override"
-    assert result.update["data_points"]["type"] == "override"
-    assert result.update["hypothesis_evidence"]["type"] == "override"
-    assert result.update["charts"]["type"] == "override"
-    assert result.update["contradictions"]["type"] == "override"
-    assert result.update["sources"]["type"] == "override"
+    from langgraph.types import Overwrite
 
-    facts = result.update["facts"]["value"]
-    data_points = result.update["data_points"]["value"]
-    evidence = result.update["hypothesis_evidence"]["value"]
-    charts = result.update["charts"]["value"]
-    contradictions = result.update["contradictions"]["value"]
-    sources = result.update["sources"]["value"]
+    assert isinstance(result.update["facts"], Overwrite)
+    assert isinstance(result.update["data_points"], Overwrite)
+    assert isinstance(result.update["hypothesis_evidence"], Overwrite)
+    assert isinstance(result.update["charts"], Overwrite)
+    assert isinstance(result.update["contradictions"], Overwrite)
+    assert isinstance(result.update["sources"], Overwrite)
+
+    facts = result.update["facts"].value
+    data_points = result.update["data_points"].value
+    evidence = result.update["hypothesis_evidence"].value
+    charts = result.update["charts"].value
+    contradictions = result.update["contradictions"].value
+    sources = result.update["sources"].value
 
     assert all(item["section_id"] in {"sec_1", "sec_2"} for item in facts)
     assert all(item["section_id"] in {"sec_1", "sec_2"} for item in data_points)
@@ -276,9 +319,9 @@ async def test_section_pipeline_tags_section_scoped_evidence_and_unique_sources(
     assert all("source_id" not in source for source in sources)
 
 
-async def test_section_pipeline_second_pass_overrides_stale_collections() -> None:
+async def test_section_pipeline_second_pass_uses_overwrite() -> None:
     from deep_agents.graph import section_pipeline_node
-    from deep_agents.state import override_reducer
+    from langgraph.types import Overwrite
 
     section_result = {
         "section_facts": [{"content": "fresh", "source_url": "https://example.com/fresh"}],
@@ -287,7 +330,6 @@ async def test_section_pipeline_second_pass_overrides_stale_collections() -> Non
         ],
         "section_hypothesis_evidence": [],
         "section_charts": [],
-        "section_insights": [],
         "section_contradictions": [],
         "section_sources": [{"url": "https://example.com/fresh", "title": "fresh", "summary": ""}],
         "missing_info": [],
@@ -309,9 +351,10 @@ async def test_section_pipeline_second_pass_overrides_stale_collections() -> Non
     with patch("deep_agents.graph._get_section_subgraph", return_value=mock_sg):
         result = await section_pipeline_node(state, {"configurable": {"thread_id": "t1"}})
 
-    current_facts = [{"content": "stale", "section_id": "sec_1"}]
-    replaced_facts = override_reducer(current_facts, result.update["facts"])
-    assert replaced_facts == result.update["facts"]["value"]
+    # Overwrite replaces stale data entirely
+    assert isinstance(result.update["facts"], Overwrite)
+    assert len(result.update["facts"].value) == 1
+    assert result.update["facts"].value[0]["content"] == "fresh"
 
 
 async def test_section_pipeline_rejects_empty_sections() -> None:

@@ -13,7 +13,7 @@ from deep_agents.configuration import Configuration
 from deep_agents.prompts import planner_prompt
 from deep_agents.schemas import SimplifiedPlan
 from deep_agents.state import ResearchState
-from deep_agents.utils import _strip_ctrl, get_api_key_for_model, get_today_str
+from deep_agents.utils import _strip_ctrl, get_api_key_for_model, STRUCTURED_OUTPUT_RETRY_EXCEPTIONS, get_today_str
 
 
 async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
@@ -22,14 +22,19 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
 
     model = (
         init_chat_model(
-            model=configurable.research_model,
-            max_tokens=configurable.research_model_max_tokens,
-            api_key=get_api_key_for_model(configurable.research_model, config),
+            model=configurable.final_report_model,
+            max_tokens=configurable.final_report_model_max_tokens,
+            api_key=get_api_key_for_model(configurable.final_report_model, config),
             base_url=configurable.openai_compatible_base_url,
+            max_retries=configurable.provider_max_retries,
             disable_streaming=True,
         )
         .with_structured_output(SimplifiedPlan)
-        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+        .with_retry(
+            retry_if_exception_type=STRUCTURED_OUTPUT_RETRY_EXCEPTIONS,
+            wait_exponential_jitter=True,
+            stop_after_attempt=configurable.max_structured_output_retries,
+        )
     )
 
     research_goal = state.get("research_goal", "")
@@ -48,16 +53,6 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
 
     plan: SimplifiedPlan = await model.ainvoke([HumanMessage(content=prompt_text)])
 
-    hypotheses = [
-        {
-            "id": f"h_{i + 1}",
-            "statement": h,
-            "evidence_needed": [],
-            "status": "untested",
-        }
-        for i, h in enumerate(plan.hypotheses)
-    ]
-
     sections = [
         {
             "id": f"sec_{i + 1}",
@@ -71,7 +66,7 @@ async def planner_node(state: ResearchState, config: RunnableConfig) -> dict:
 
     return {
         "research_type": plan.research_type,
-        "hypotheses": hypotheses,
+        "hypotheses": plan.hypotheses,
         "sections": sections,
         "outline_status": "provisional",
         "outline_revision_count": 0,

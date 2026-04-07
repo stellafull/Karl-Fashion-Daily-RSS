@@ -26,3 +26,11 @@ def test_configuration_allows_non_request_endpoint_paths() -> None:
     )
 
     assert config.openai_compatible_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1/images"
+
+
+def test_configuration_uses_single_deep_scout_loop_cap() -> None:
+    config = Configuration()
+
+    assert config.max_deep_scout_iterations == 5
+    assert "max_researcher_iterations" not in Configuration.model_fields
+    assert "max_react_tool_calls" not in Configuration.model_fields
