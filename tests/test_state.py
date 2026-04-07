@@ -3,10 +3,7 @@ from typing import Annotated, get_args, get_origin, get_type_hints
 
 from langgraph.graph import add_messages
 
-from deep_agents.state import (
-    ResearchState,
-    SectionState,
-)
+from deep_agents.state import ResearchState, SectionState
 
 
 def _assert_annotated_reducer(field_annotation: object, expected_reducer: object) -> None:
@@ -45,7 +42,6 @@ def test_research_state_collection_fields_use_operator_add_reducer() -> None:
         "hypothesis_evidence",
         "charts",
         "contradictions",
-        "sources",
         "section_drafts",
     ]
 
@@ -55,7 +51,7 @@ def test_research_state_collection_fields_use_operator_add_reducer() -> None:
 
 def test_removed_fields_not_in_research_state() -> None:
     hints = get_type_hints(ResearchState, include_extras=True)
-    for removed in ("insights", "open_questions", "budget"):
+    for removed in ("insights", "open_questions", "budget", "sources"):
         assert removed not in hints
 
 
@@ -69,7 +65,7 @@ def test_section_state_matches_prd_shape() -> None:
         "research_goal",
         "hypotheses",
         "language",
-        "search_results",
+        "section_research",
         "section_facts",
         "section_insights",
         "section_hypothesis_evidence",
@@ -77,7 +73,6 @@ def test_section_state_matches_prd_shape() -> None:
         "missing_info",
         "section_data_points",
         "section_charts",
-        "section_sources",
     }
     removed_keys = {
         "budget",
@@ -88,6 +83,8 @@ def test_section_state_matches_prd_shape() -> None:
         "data_wiz_output",
         "section_entities",
         "section_time_series",
+        "search_results",
+        "section_sources",
     }
 
     assert required_keys.issubset(set(hints.keys()))
