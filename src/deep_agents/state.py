@@ -46,7 +46,7 @@ class SectionState(TypedDict):
     hypotheses: list[str]
     language: str
 
-    search_results: list[str]
+    section_research: str
     section_facts: list[dict]
     section_insights: list[str]
     section_hypothesis_evidence: list[dict]
